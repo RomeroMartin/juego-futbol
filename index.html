@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Fútbol Figuritas</title>
+
+    <link
+        rel="stylesheet"
+        href="style.css"
+    >
+
+</head>
+
+
+<body>
+
+
+    <!-- =====================================
+         HEADER
+    ====================================== -->
+
+    <header class="topbar">
+
+        <div class="logo">
+
+            <span>⚽</span>
+
+            <h1>
+                FÚTBOL FIGURITAS
+            </h1>
+
+        </div>
+
+
+        <div class="user-info">
+
+            <span id="collectionCount">
+                0 jugadores · 0 figuritas
+            </span>
+
+            <span id="packCount">
+                5 paquetes
+            </span>
+
+        </div>
+
+    </header>
+
+
+
+    <main>
+
+
+        <!-- =====================================
+             HOME
+        ====================================== -->
+
+        <section
+            id="homeScreen"
+            class="screen active"
+        >
+
+            <div class="hero">
+
+                <span class="eyebrow">
+                    TEMPORADA 2026
+                </span>
+
+
+                <h2>
+                    ARMÁ TU EQUIPO<br>
+                    CON TUS FIGURITAS
+                </h2>
+
+
+                <p>
+                    Abrí paquetes, conseguí jugadores
+                    y construí tu equipo ideal.
+                </p>
+
+
+                <button
+                    id="openPackButton"
+                    class="main-button"
+                >
+                    ABRIR PAQUETE
+                </button>
+
+
+                <button
+                    id="buildTeamButton"
+                    class="secondary-button hero-secondary-button"
+                >
+                    ARMAR EQUIPO
+                </button>
+
+
+                <p class="pack-info">
+                    Cada paquete contiene 6 jugadores.
+                </p>
+
+            </div>
+
+        </section>
+
+
+
+        <!-- =====================================
+             PACK
+        ====================================== -->
+
+        <section
+            id="packScreen"
+            class="screen"
+        >
+
+            <div class="section-header">
+
+                <button
+                    id="backFromPack"
+                    class="back-button"
+                >
+                    ← Volver
+                </button>
+
+
+                <div>
+
+                    <span class="eyebrow">
+                        NUEVO PAQUETE
+                    </span>
+
+                    <h2>
+                        ¡MIRÁ LO QUE TE TOCÓ!
+                    </h2>
+
+                </div>
+
+            </div>
+
+
+            <div
+                id="packCards"
+                class="cards-grid"
+            ></div>
+
+
+            <button
+                id="closePackButton"
+                class="secondary-button"
+            >
+                CONTINUAR
+            </button>
+
+        </section>
+
+
+
+        <!-- =====================================
+             COLLECTION
+        ====================================== -->
+
+        <section
+            id="collectionScreen"
+            class="screen"
+        >
+
+            <div class="section-header">
+
+                <button
+                    id="backFromCollection"
+                    class="back-button"
+                >
+                    ← Volver
+                </button>
+
+
+                <div>
+
+                    <span class="eyebrow">
+                        MI COLECCIÓN
+                    </span>
+
+                    <h2>
+                        TUS JUGADORES
+                    </h2>
+
+                </div>
+
+            </div>
+
+
+
+            <div class="collection-summary">
+
+                <div class="summary-item">
+
+                    <strong id="uniquePlayers">
+                        0
+                    </strong>
+
+                    <span>
+                        JUGADORES ÚNICOS
+                    </span>
+
+                </div>
+
+
+                <div class="summary-item">
+
+                    <strong id="totalFiguritas">
+                        0
+                    </strong>
+
+                    <span>
+                        FIGURITAS
+                    </span>
+
+                </div>
+
+            </div>
+
+
+
+            <div class="collection-actions">
+
+                <button
+                    id="collectionBuildTeamButton"
+                    class="main-button"
+                >
+                    ARMAR EQUIPO
+                </button>
+
+            </div>
+
+
+
+            <div class="collection-tools">
+
+                <button
+                    class="filter-button active"
+                    data-filter="all"
+                >
+                    TODOS
+                </button>
+
+
+                <button
+                    class="filter-button"
+                    data-filter="POR"
+                >
+                    ARQUEROS
+                </button>
+
+
+                <button
+                    class="filter-button"
+                    data-filter="DEF"
+                >
+                    DEFENSORES
+                </button>
+
+
+                <button
+                    class="filter-button"
+                    data-filter="MED"
+                >
+                    MEDIOS
+                </button>
+
+
+                <button
+                    class="filter-button"
+                    data-filter="DEL"
+                >
+                    DELANTEROS
+                </button>
+
+            </div>
+
+
+
+            <div
+                id="collectionCards"
+                class="cards-grid"
+            ></div>
+
+        </section>
+
+
+
+        <!-- =====================================
+             TEAM BUILDER
+        ====================================== -->
+
+        <section
+            id="teamScreen"
+            class="screen"
+        >
+
+            <div class="section-header">
+
+                <button
+                    id="backFromTeam"
+                    class="back-button"
+                >
+                    ← Volver
+                </button>
+
+
+                <div>
+
+                    <span class="eyebrow">
+                        MI EQUIPO
+                    </span>
+
+                    <h2>
+                        ARMÁ TU XI
+                    </h2>
+
+                </div>
+
+            </div>
+
+
+
+            <div class="team-layout">
+
+
+                <!-- =========================
+                     CANCHA
+                ========================== -->
+
+                <div class="pitch-container">
+
+                    <div class="pitch-header">
+
+                        <div>
+
+                            <span class="pitch-label">
+                                FORMACIÓN
+                            </span>
+
+                            <strong>
+                                4 - 3 - 3
+                            </strong>
+
+                        </div>
+
+
+                        <div class="team-counter">
+
+                            <strong id="teamPlayerCount">
+                                0
+                            </strong>
+
+                            <span>
+                                / 11
+                            </span>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <div
+                        id="footballPitch"
+                        class="football-pitch"
+                    >
+
+
+                        <!-- DELANTEROS -->
+
+                        <div class="pitch-row attackers">
+
+                            <div
+                                class="position-slot"
+                                data-position="DEL"
+                                data-slot="del1"
+                            ></div>
+
+
+                            <div
+                                class="position-slot"
+                                data-position="DEL"
+                                data-slot="del2"
+                            ></div>
+
+
+                            <div
+                                class="position-slot"
+                                data-position="DEL"
+                                data-slot="del3"
+                            ></div>
+
+                        </div>
+
+
+
+                        <!-- MEDIOCAMPISTAS -->
+
+                        <div class="pitch-row midfielders">
+
+                            <div
+                                class="position-slot"
+                                data-position="MED"
+                                data-slot="med1"
+                            ></div>
+
+
+                            <div
+                                class="position-slot"
+                                data-position="MED"
+                                data-slot="med2"
+                            ></div>
+
+
+                            <div
+                                class="position-slot"
+                                data-position="MED"
+                                data-slot="med3"
+                            ></div>
+
+                        </div>
+
+
+
+                        <!-- DEFENSORES -->
+
+                        <div class="pitch-row defenders">
+
+                            <div
+                                class="position-slot"
+                                data-position="DEF"
+                                data-slot="def1"
+                            ></div>
+
+
+                            <div
+                                class="position-slot"
+                                data-position="DEF"
+                                data-slot="def2"
+                            ></div>
+
+
+                            <div
+                                class="position-slot"
+                                data-position="DEF"
+                                data-slot="def3"
+                            ></div>
+
+
+                            <div
+                                class="position-slot"
+                                data-position="DEF"
+                                data-slot="def4"
+                            ></div>
+
+                        </div>
+
+
+
+                        <!-- ARQUERO -->
+
+                        <div class="pitch-row goalkeeper">
+
+                            <div
+                                class="position-slot"
+                                data-position="POR"
+                                data-slot="por1"
+                            ></div>
+
+                        </div>
+
+
+                    </div>
+
+
+
+                    <!-- =================================
+                         ESTADÍSTICAS DEL EQUIPO
+                    ================================== -->
+
+                    <div class="team-stats-panel">
+
+                        <div class="team-stat-card">
+
+                            <span class="team-stat-icon">
+                                ⚽
+                            </span>
+
+                            <span class="team-stat-label">
+                                ATAQUE
+                            </span>
+
+                            <strong id="teamAttack">
+                                —
+                            </strong>
+
+                        </div>
+
+
+                        <div class="team-stat-card">
+
+                            <span class="team-stat-icon">
+                                🧠
+                            </span>
+
+                            <span class="team-stat-label">
+                                MEDIOCAMPO
+                            </span>
+
+                            <strong id="teamMidfield">
+                                —
+                            </strong>
+
+                        </div>
+
+
+                        <div class="team-stat-card">
+
+                            <span class="team-stat-icon">
+                                🛡️
+                            </span>
+
+                            <span class="team-stat-label">
+                                DEFENSA
+                            </span>
+
+                            <strong id="teamDefense">
+                                —
+                            </strong>
+
+                        </div>
+
+
+                        <div class="team-stat-card overall-team-stat">
+
+                            <span class="team-stat-icon">
+                                ⭐
+                            </span>
+
+                            <span class="team-stat-label">
+                                VALORACIÓN
+                            </span>
+
+                            <strong id="teamRating">
+                                —
+                            </strong>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <!-- =================================
+                         ESTADO DEL EQUIPO
+                    ================================== -->
+
+                    <div
+                        id="teamStatus"
+                        class="team-status"
+                    >
+
+                        <span class="status-icon">
+                            ⚠
+                        </span>
+
+                        <div>
+
+                            <strong>
+                                EQUIPO INCOMPLETO
+                            </strong>
+
+                            <span>
+                                Completá las 11 posiciones
+                                para poder competir.
+                            </span>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+
+                <!-- =========================
+                     JUGADORES DISPONIBLES
+                ========================== -->
+
+                <aside class="available-players">
+
+                    <div class="available-header">
+
+                        <div>
+
+                            <span class="eyebrow">
+                                COLECCIÓN
+                            </span>
+
+                            <h3>
+                                ELEGÍ TUS JUGADORES
+                            </h3>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <!-- FILTROS DEL EQUIPO -->
+
+                    <div class="team-player-filters">
+
+                        <button
+                            class="team-filter-button active"
+                            data-team-filter="all"
+                        >
+                            TODOS
+                        </button>
+
+
+                        <button
+                            class="team-filter-button"
+                            data-team-filter="POR"
+                        >
+                            ARQUEROS
+                        </button>
+
+
+                        <button
+                            class="team-filter-button"
+                            data-team-filter="DEF"
+                        >
+                            DEFENSAS
+                        </button>
+
+
+                        <button
+                            class="team-filter-button"
+                            data-team-filter="MED"
+                        >
+                            MEDIOS
+                        </button>
+
+
+                        <button
+                            class="team-filter-button"
+                            data-team-filter="DEL"
+                        >
+                            DELANTEROS
+                        </button>
+
+                    </div>
+
+
+
+                    <div
+                        id="availablePlayers"
+                        class="available-player-list"
+                    ></div>
+
+                </aside>
+
+
+            </div>
+
+        </section>
+
+
+
+        <!-- =====================================
+             NAVEGACIÓN
+        ====================================== -->
+
+        <nav class="bottom-nav">
+
+            <button
+                class="nav-button active"
+                data-screen="homeScreen"
+            >
+
+                <span>📦</span>
+
+                <small>
+                    Paquetes
+                </small>
+
+            </button>
+
+
+            <button
+                class="nav-button"
+                data-screen="collectionScreen"
+            >
+
+                <span>🃏</span>
+
+                <small>
+                    Colección
+                </small>
+
+            </button>
+
+
+            <button
+                class="nav-button"
+                data-screen="teamScreen"
+            >
+
+                <span>⚽</span>
+
+                <small>
+                    Mi equipo
+                </small>
+
+            </button>
+
+        </nav>
+
+
+    </main>
+
+
+
+    <script src="players.js"></script>
+
+    <script src="app.js"></script>
+
+
+</body>
+
+</html>
