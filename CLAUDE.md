@@ -17,10 +17,13 @@ cuando los necesites:
 
 ## Stack (no negociable)
 
-- HTML, CSS y JavaScript vanilla.
-- Sin frameworks, sin build tools, sin npm, sin TypeScript.
+- HTML, CSS y JavaScript vanilla, organizado en **módulos ES nativos**
+  (`<script type="module">`, `import`/`export`).
+- Sin frameworks, sin bundlers, sin transpiladores, sin npm, sin TypeScript.
 - Única dependencia permitida: SDK de Firebase, y recién a partir de la Etapa 7.
-- Todo tiene que correr abriendo `index.html` en el navegador.
+- El juego se sirve con **Live Server o cualquier servidor estático local**
+  (ver `README.md`). Ya **no** se abre con doble clic (`file://`): los módulos ES
+  no cargan bajo ese protocolo. Sigue sin necesitar build ni instalación.
 
 Si algo parece necesitar una librería, proponelo y esperá respuesta. No la agregues.
 

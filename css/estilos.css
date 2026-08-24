@@ -1755,3 +1755,53 @@ main {
     }
 
 }
+
+/* =========================================
+   OVR MEDIO DEL PLANTEL (§20.4)
+   Dato de colección, secundario respecto de
+   la Valoración. Se muestra discreto a
+   propósito: no predice el resultado.
+========================================= */
+
+.ovr-medio-nota {
+
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+
+    margin-top: 12px;
+    padding: 10px 14px;
+
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+
+}
+
+
+.ovr-medio-nota .ovr-medio-label {
+
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+
+}
+
+
+.ovr-medio-nota strong {
+
+    font-size: 18px;
+    color: var(--white);
+
+}
+
+
+.ovr-medio-nota small {
+
+    font-size: 11px;
+    color: var(--muted);
+    margin-left: auto;
+
+}
