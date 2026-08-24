@@ -6,10 +6,17 @@
 // y persisten con guardarPartida() de storage.js.
 
 import {
+    sincronizarDataset,
     cargarColeccion,
     cargarPaquetes,
     cargarEquipo
 } from "./storage.js";
+
+
+// Se corre ANTES de cargar la partida: si el plantel cambió, resetea la
+// colección guardada (§10, Etapa 1). `datasetReseteado` indica si hay que
+// avisarle al usuario.
+export const datasetReseteado = sincronizarDataset();
 
 
 export const estado = {

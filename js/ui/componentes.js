@@ -3,12 +3,13 @@
 // ==========================================
 
 // ==========================================
-// RAREZA
+// RAREZA (fallback)
 // ==========================================
 //
-// ⚠️ PROVISIONAL. Umbrales absolutos de OVR heredados de la V0.3.
-// La rareza real se calcula por percentiles sobre el pool (§11) y es tarea de
-// la Etapa 1, junto con el dataset real. Hasta entonces esto queda como está.
+// La rareza real se calcula por percentiles sobre el pool (§11.2) y viene
+// PRECALCULADA en cada jugador (campo `rarity`), generada por
+// scripts/convertir-dataset.js. Esta función de umbrales absolutos queda solo
+// como fallback para jugadores sin `rarity` (p. ej. datos viejos).
 
 export function getRarity(overall) {
     if (overall >= 85) {
@@ -68,7 +69,8 @@ export function createPlayerCard(player, showQuantity = true, quantity = 1) {
 
     card.className = "player-card";
 
-    const rarity = getRarity(player.overall);
+    // Rareza precalculada del dataset (§11.2); fallback a umbrales si falta.
+    const rarity = player.rarity || getRarity(player.overall);
 
     card.innerHTML = `
 

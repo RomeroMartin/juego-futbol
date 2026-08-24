@@ -1,140 +1,135 @@
-# ESTADO — Después de la Etapa 0 (Auditoría y alineación)
+# ESTADO — Después de la Etapa 1 (Datos reales y rareza)
 
-> Código base: **V0.3** (versión del código). Etapa del plan completada: **0**.
-> Recordá: "V0.3" es la versión del CÓDIGO; "Etapa N" es del plan de trabajo.
-> No están relacionados.
+> Etapa del plan completada: **1**. Base: la Etapa 0 ya está en `main`.
 
 ## 1. Qué se implementó en esta etapa
 
-La Etapa 0 era alinear el código existente con el documento maestro, **sin
-features nuevas** ni cambios visuales de fondo. Se hizo todo lo de §Etapa 0:
+- **Dataset real de la Liga Profesional argentina.** Se reemplazó el plantel de
+  prueba de 18 jugadores por los **869 reales** (30 clubes), extraídos del CSV
+  de EA FC 26.
+- **`scripts/convertir-dataset.js`** — genera `js/data/jugadores.js` desde el
+  CSV: filtra la liga argentina, mapea al modelo §8 y asigna rareza por
+  percentiles (§11.2).
+- **`scripts/analizar-pool.js`** — análisis del pool (total, por posición con
+  foco en arqueros, por rareza, histograma de Overall). Fue el primer
+  entregable, antes de congelar la rareza.
+- **`scripts/lib/dataset.js`** — lógica compartida por ambos scripts (parseo
+  CSV, mapeo de posiciones, rareza). Única copia del mapeo, para que no se
+  desincronice.
+- **Rareza por percentiles (§11.2)** precalculada en cada jugador (campo
+  `rarity`). La carta de UI ahora usa `player.rarity`.
+- **Reset explícito y avisado de la colección**: al detectar que el plantel
+  cambió, se resetea la partida al estado inicial y se le muestra al usuario un
+  aviso ("el plantel se actualizó… tu colección se reinició").
+- README con la fuente del dataset (Kaggle) y cómo regenerarlo.
 
-- **Reorganización a módulos ES nativos.** El `app.js` monolítico (2121 líneas)
-  se repartió en módulos con `import`/`export`. `index.html` carga
-  `js/main.js` con `<script type="module">`.
-- **Fórmulas de Ataque / Mediocampo / Defensa corregidas según §20**, con la
-  ponderación explícita del arquero (línea 75% / arquero 25%) y el
-  `console.assert` de pesos de §20.0.
-- **Valoración derivada de las tres áreas (§20.4)** en vez del promedio de OVR.
-  Se agregó el **OVR medio del plantel** como dato de colección aparte y
-  etiquetado, con su fila propia en la pantalla de equipo.
-- **`schemaVersion` + `migrar()` funcionando (§52).** Toda colección leída de
-  `localStorage` pasa por `migrar()`; una guardada con el modelo viejo se
-  normaliza al modelo §8 (campos nuevos en `null`).
-- **Se eliminó "Utilizado / Disponible" (§16.2).** Las copias no se bloquean:
-  un jugador puede estar en todos los equipos a la vez. La única traba es no
-  repetir la misma identidad dentro del mismo XI (§16.3).
-- **`config/economia.js` (§15.7)** con todos los valores centralizados.
-- **Modelo de jugador completo (§8)**: todos los campos existen, los nuevos en
-  `null`.
-- **`config/formaciones.js` (§17)** con la 4-3-3 modelada con estructura
-  completa (ver decisión 3.2).
+### Verificación del pool (checkpoint del histograma)
+
+El pool real **coincide casi exacto** con lo que asume §11 — **no hizo falta
+recalibrar** §11 ni §14:
+
+| | Pool real | §11 espera |
+|---|---|---|
+| Total | 869 | ~869 |
+| Clubes | 30 | ~30 |
+| OVR (mín/máx/media/mediana) | 50 / 82 / 67.6 / 68 | tope ~82, sin 85+ |
+| Arqueros | 88 | ≥60 (test) |
+| LEYENDA / ESTRELLA / DESTACADO / ORO / COMÚN | 8 / 35 / 130 / 261 / 435 | 9 / 35 / 130 / 260 / 435 |
 
 ## 2. Archivos y qué hace cada uno
 
-Nuevos / reorganizados:
+Nuevos:
 
 | Archivo | Qué hace |
 |---|---|
-| `index.html` | Punto de entrada. Carga `js/main.js` como módulo. Se le agregó la fila "OVR medio del plantel". |
-| `css/estilos.css` | (era `style.css`) Estilos. Se agregó el bloque `.ovr-medio-nota`. |
-| `js/main.js` | Enganche de eventos y arranque. Reguarda el estado migrado al cargar. |
-| `js/config/economia.js` | Valores de economía y balance (§15.7). Solo se usa `paquetesBienvenida` en esta etapa. |
-| `js/config/formaciones.js` | Formaciones como dato (§17). Solo 4-3-3, estructura completa. |
-| `js/data/jugadores.js` | (era `players.js`) Plantel de prueba con modelo §8. `export const JUGADORES`. |
-| `js/core/estado.js` | Estado mutable en memoria + helpers de acceso (jugadores del XI, conteos). |
-| `js/core/storage.js` | Persistencia en `localStorage` + `SCHEMA_VERSION_ACTUAL` + `migrar()` (§52). |
-| `js/core/calculos.js` | `PESOS` + assert (§20.0), scores y stats de área (§20.1–20.3), valoración derivada (§20.4), OVR medio, `validateTeam` (lee slots de la formación). |
-| `js/ui/componentes.js` | Carta de jugador, `getRarity` (provisional), nombres/íconos de posición. |
-| `js/ui/navegacion.js` | Cambio de pantalla (`showScreen`) y header (`updateHeader`). |
-| `js/ui/paquetes.js` | Apertura y render de paquetes. |
-| `js/ui/coleccion.js` | Vista de colección y sus filtros. |
-| `js/ui/equipo.js` | Constructor del XI, render de cancha, stats, filtros. |
+| `scripts/lib/dataset.js` | Tooling Node (CommonJS): parseo CSV, `MAPA_POSICION`, `asignarRarezas` (§11.2). Única copia de esa lógica. |
+| `scripts/analizar-pool.js` | Reporta la composición del pool. Se corre con `node scripts/analizar-pool.js`. |
+| `scripts/convertir-dataset.js` | Genera `js/data/jugadores.js` desde el CSV. `node scripts/convertir-dataset.js`. |
+| `js/config/dataset.js` | `DATASET_VERSION` del plantel activo (dispara el reset de colección). |
+| `.gitignore` | Ignora `data-raw/` (CSV con licencia de EA, §10.2). |
+| `data-raw/EAFC26Men.csv` | CSV crudo. **NO versionado.** Se baja de Kaggle (ver README). |
 
-Docs:
+Modificados:
 
-| Archivo | Qué hace |
+| Archivo | Cambio |
 |---|---|
-| `README.md` | **Nuevo.** Cómo levantar el juego con servidor estático (Live Server / Python / Node) y estructura del proyecto. |
-| `CLAUDE.md` | Actualizado el stack: módulos ES, se sirve con servidor local (ya no doble clic). |
-| `ESTADO.md` | Este archivo. |
-
-Eliminados: `app.js`, `players.js`, `style.css` (su contenido se repartió).
+| `js/data/jugadores.js` | **Regenerado**: 869 jugadores reales, modelo §8 + `detailedPosition`, rareza precalculada. Archivo generado, no editar a mano. |
+| `js/core/storage.js` | `sincronizarDataset()`: reset explícito de la colección cuando cambia el plantel. |
+| `js/core/estado.js` | Corre `sincronizarDataset()` antes de cargar; exporta `datasetReseteado`. |
+| `js/main.js` | Muestra el aviso de reset si `datasetReseteado`. |
+| `js/ui/componentes.js` | La carta usa `player.rarity` (fallback a `getRarity`). |
+| `index.html` + `css/estilos.css` | Aviso de reset de colección (banner descartable). |
+| `README.md` | Sección Dataset: URL de Kaggle, archivo, cómo regenerar. |
 
 ## 3. Decisiones técnicas que conviene recordar
 
-### 3.1. Módulos ES + servidor local (NO doble clic)
-Se pasó a `<script type="module">` con `import`/`export`. Consecuencia: el juego
-**ya no se abre con doble clic** sobre `index.html` (`file://` bloquea los
-módulos por CORS). **Hay que servirlo con Live Server o cualquier servidor
-estático** (ver `README.md`). Sigue sin bundlers, sin transpiladores y sin npm:
-módulos nativos y nada más. La regla vieja de "abrir index.html" en `CLAUDE.md`
-quedó reemplazada.
+### 3.1. Liga argentina = `"LPF"` en el dataset
+De las 45 ligas del CSV, la argentina figura como **`LPF`** (869 jugadores, 30
+clubes). Ojo: `Libertadores` y `Sudamericana` son torneos continentales con
+clubes de otros países — **no** entran.
 
-### 3.2. `formaciones.js` con estructura completa de §17
-Aunque en esta etapa solo existe la 4-3-3, se modeló con **toda** la estructura
-de §17 (`slots`, `amplitud`, `densidadCentral`, `mod`) con los valores del
-documento. Los campos `amplitud`, `densidadCentral` y `mod` **no se usan
-todavía** (llevan comentario). `validateTeam` **solo lee `slots`**. Así la
-Etapa 5 suma entradas al objeto sin refactorizar la estructura.
+### 3.2. Mapeo de posiciones: 4 categorías + se guarda la granular
+El dataset trae 12 posiciones granulares (GK, CB, RB, LB, CDM, CM, CAM, LM, RM,
+ST, LW, RW). El juego usa 4 (§9). Mapeo (decisión de esta etapa, **estándar**):
+- `GK→POR` · `CB/RB/LB→DEF` · `CDM/CM/CAM/LM/RM→MED` · `ST/LW/RW→DEL`.
+- **Además se guarda la posición granular en `detailedPosition`** para no perder
+  el dato. No se descartó nada del dataset. Queda disponible para un eventual
+  sistema de posiciones más rico (§18, posiciones secundarias) sin reconvertir.
+- El mapeo vive en **un solo lugar**: `scripts/lib/dataset.js`.
 
-### 3.3. `id` numérico — NO se migró a string
-El `id` de jugador queda **numérico** en esta etapa. No se pasó a string
-(`"arg_00147"` de §8) porque en la **Etapa 1** la colección guardada se
-**resetea** de todos modos: referencia jugadores de prueba que dejan de existir
-cuando entra el dataset real. No es una migración de formato de id, es un reset,
-y se resuelve allá.
+### 3.3. `id` = ID de EA (numérico)
+El `id` es la columna `ID` del dataset (numérico, único, estable). Sigue siendo
+numérico, como venía de la Etapa 0.
 
-### 3.4. `migrar()` está implementado y funcionando (no es un stub)
-Sigue el patrón de §52 (cadena `0→1→2→3`). El único paso con cambio real en
-esta etapa es `0→1` (modelo de jugador V0.3 → modelo §8: agrega los campos
-faltantes en `null`). Los pasos `1→2` y `2→3` solo suben el número de versión;
-los cambios que definen (p. ej. `fichas → monedas.fichas`, §48.3) pertenecen a
-etapas posteriores. Probado: un jugador sin `schemaVersion` termina en
-`schemaVersion: 3` con los 13 campos §8 en `null` y las stats intactas.
+### 3.4. `jugadores.js` es `.js`, NUNCA `.json`
+El conversor genera `export const JUGADORES = [...]`. Un `.json` obligaría a
+`fetch()` async y a volver asíncrono todo el arranque, sin ganancia. **Que la
+Etapa siguiente no lo cambie por inercia.**
 
-## 4. Pendientes / cosas explícitamente diferidas
+### 3.5. Reset de colección por versión de dataset
+`js/config/dataset.js` tiene `DATASET_VERSION`. Al cargar, `sincronizarDataset()`
+compara con lo guardado; si difiere, resetea colección/equipo/paquetes al estado
+inicial y sella la nueva versión. Solo avisa si el usuario **tenía** datos (a un
+usuario nuevo no se le muestra nada). El "estado inicial" es el de hoy (colección
+vacía + paquetes de bienvenida de `ECONOMIA`); los **5 paquetes de bienvenida
+reales (§13.1) son de la Etapa 6**.
 
-- **`getRarity()` sigue siendo PROVISIONAL**, con **umbrales absolutos** de OVR
-  (≥85 ESTRELLA, ≥80 DESTACADO, ≥75 ORO, resto COMÚN) y solo 4 rarezas. **La
-  rareza por percentiles (§11), con las 5 rarezas reales (LEYENDA incluida), es
-  tarea de la Etapa 1**, junto con el dataset real. No quedó pasado por alto: es
-  una decisión, no un olvido. Vive en `js/ui/componentes.js` con un comentario.
-- El campo `rarity` de cada jugador está en `null` (se llena en la Etapa 1).
-- Los valores de `economia.js` distintos de `paquetesBienvenida` están
-  definidos pero **no se usan** hasta la Etapa 6.
-- La estructura `amplitud`/`densidadCentral`/`mod` de las formaciones está
-  cargada pero **no se usa** hasta la Etapa 5.
+### 3.6. Los scripts son CommonJS; el juego es ESM
+`scripts/` es tooling de Node (CommonJS, corre sin config ni npm). `js/` es
+módulos ES para el navegador. Es una separación deliberada.
 
-## 5. Advertencias para la próxima etapa (Etapa 1)
+## 4. Pendientes / diferido
 
-- **`jugadores.js` DEBE seguir siendo `.js`, no `.json`.** El script de
-  conversión del CSV tiene que generar `export const JUGADORES = [...]` (módulo
-  ES), **no** un `.json`. Motivo: un `.json` obliga a `fetch()` asíncrono y a
-  volver async todo el arranque, sin ninguna ganancia. Es una decisión tomada,
-  no la cambies por inercia.
-- **La colección guardada se resetea en la Etapa 1.** Los jugadores de prueba
-  (ids 1–18) desaparecen al entrar el dataset real. Hay que limpiar / invalidar
-  las colecciones viejas de `localStorage` (o migrarlas a vacío), porque
-  referencian ids que ya no existen.
-- Al asignar rarezas por percentiles (§11.2), reemplazar `getRarity()` de
-  `componentes.js` por la rareza almacenada en cada jugador (`player.rarity`),
-  no seguir calculándola por umbral de OVR.
-- **Mirar el histograma de Overall** del pool real antes de avanzar (lo pide el
-  plan): si la distribución no se parece a lo que asume §11/§14, avisar y
-  recalibrar antes de la Etapa 2.
+- `shortName` y `clubId` quedan en `null` (los clubes como catálogo son §55).
+- La rareza `"COMUN"` se guarda sin tilde, tal como el código de §11.2. Es solo
+  el string interno.
+- Las **probabilidades de paquete (§14)** NO se tocaron: la generación de
+  paquetes sigue siendo aleatoria uniforme desde el pool (heredado). El sistema
+  de probabilidades por rareza y los pity (§13, §14) son de la Etapa 6.
+
+## 5. Advertencias para la próxima etapa (Etapa 2 — Motor de partido)
+
+- La Etapa 2 es el **motor de partido headless**. Regla dura: **prohibido
+  `Math.random()` en el motor** — se usa `mulberry32` con semilla (§23). (El
+  `Math.random()` que hay en la generación de paquetes NO es del motor y queda
+  como está hasta la Etapa 6.)
+- El histograma ya validó §11 y §14 en cuanto a distribución del pool. Las
+  probabilidades de paquete de §14 se validan por **simulación** (§33) recién
+  cuando exista el motor.
+- `detailedPosition` está disponible en cada jugador si el motor quisiera
+  distinguir perfiles, pero el motor de §22–§26 trabaja con las **4 categorías**.
+- Para regenerar el plantel: dejar el CSV en `data-raw/` y correr
+  `node scripts/convertir-dataset.js` (ver README). El CSV no está versionado.
 
 ## 6. Cómo testear que esta etapa quedó bien
 
-1. Servir el proyecto (`python3 -m http.server 8000`) y abrir `http://localhost:8000`.
-2. Abrir la consola del navegador: **no debe saltar ningún assert de pesos**.
-3. Abrir paquetes, ver la colección, armar un XI completo (1-4-3-3).
-4. La **Valoración** del equipo **no** coincide con el **OVR medio del plantel**
-   (que aparece como fila aparte): confirma que la valoración ya es derivada.
-5. Recargar la página: los datos siguen (colección + XI).
-6. Los números de Ataque/Medio/Defensa son distintos de los de la V0.3 (es lo
-   esperado tras corregir las fórmulas).
+1. `node scripts/analizar-pool.js` corre y muestra los números (869 / 30 clubes
+   / 88 arqueros / las 5 rarezas pobladas).
+2. Servir el juego y abrir paquetes: salen **jugadores reales** (nombres y
+   clubes de la Liga Profesional) con su rareza.
+3. Un usuario que venía de la V0.3 ve el aviso de reset y su colección arranca
+   vacía; un usuario nuevo no ve ningún aviso.
+4. Recargar no vuelve a mostrar el aviso ni pierde datos.
 
-Verificado con Chromium en un test automatizado: XI de 11, Valoración 79.5
-derivada (= 0.33·Atq + 0.34·Med + 0.33·Def) distinta del OVR medio 81.5, sin
-asserts, persistencia OK tras recargar.
+Verificado con Chromium: reset + aviso para usuario viejo, sin aviso para nuevo,
+paquetes con datos reales, sin errores de consola.
