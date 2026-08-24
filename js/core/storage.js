@@ -7,10 +7,12 @@
 // no se rompan al cambiar el modelo de datos.
 
 import { ECONOMIA } from "../config/economia.js";
+import { DATASET_VERSION } from "../config/dataset.js";
 
 const CLAVE_COLECCION = "futbolFiguritasCollection";
 const CLAVE_PAQUETES  = "futbolFiguritasPacks";
 const CLAVE_EQUIPO    = "futbolFiguritasTeam";
+const CLAVE_DATASET   = "futbolFiguritasDatasetVersion";
 
 
 // ==========================================
@@ -84,6 +86,43 @@ function migrarDe1a2(o) {
 // (El cambio fichas → monedas.fichas de §48.3 se implementa en la Etapa 6/8.)
 function migrarDe2a3(o) {
     return { ...o, schemaVersion: 3 };
+}
+
+
+// ==========================================
+// SINCRONIZACIÓN DEL DATASET (§10, Etapa 1)
+// ==========================================
+//
+// Cuando el plantel cambia (se regeneró jugadores.js con ids nuevos), las
+// colecciones guardadas referencian jugadores que ya no existen. En vez de
+// dejar referencias rotas, se resetea la partida al estado inicial de un
+// usuario nuevo. El reset es EXPLÍCITO y se le avisa al usuario.
+//
+// Devuelve true si hubo un reset con datos previos (para mostrar el aviso).
+// A un usuario nuevo (sin nada guardado) solo se le sella la versión, sin aviso.
+//
+// Nota: los 5 paquetes de bienvenida (§13.1) son de la Etapa 6. Por ahora el
+// "estado inicial" es el mismo que ve hoy un usuario nuevo: colección vacía,
+// equipo vacío y los paquetes de bienvenida de ECONOMIA.
+export function sincronizarDataset() {
+    const versionGuardada = localStorage.getItem(CLAVE_DATASET);
+
+    if (versionGuardada === DATASET_VERSION) {
+        return false;
+    }
+
+    const teniaDatos =
+        localStorage.getItem(CLAVE_COLECCION) !== null ||
+        localStorage.getItem(CLAVE_PAQUETES) !== null ||
+        localStorage.getItem(CLAVE_EQUIPO) !== null;
+
+    // Reset al estado inicial.
+    localStorage.removeItem(CLAVE_COLECCION);
+    localStorage.removeItem(CLAVE_EQUIPO);
+    localStorage.removeItem(CLAVE_PAQUETES);
+    localStorage.setItem(CLAVE_DATASET, DATASET_VERSION);
+
+    return teniaDatos;
 }
 
 

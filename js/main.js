@@ -5,7 +5,7 @@
 // Se carga como módulo ES desde index.html (<script type="module">).
 // Importa los módulos, engancha los eventos y hace el primer render.
 
-import { estado } from "./core/estado.js";
+import { estado, datasetReseteado } from "./core/estado.js";
 import { guardarPartida } from "./core/storage.js";
 import { showScreen, updateHeader } from "./ui/navegacion.js";
 import { generatePack } from "./ui/paquetes.js";
@@ -82,6 +82,22 @@ document
 
 initFiltrosColeccion();
 initFiltrosEquipo();
+
+
+// ==========================================
+// AVISO DE RESET DE COLECCIÓN (Etapa 1)
+// ==========================================
+
+if (datasetReseteado) {
+    const aviso = document.getElementById("datasetNotice");
+    aviso.hidden = false;
+
+    document
+        .getElementById("datasetNoticeClose")
+        .addEventListener("click", () => {
+            aviso.hidden = true;
+        });
+}
 
 
 // ==========================================

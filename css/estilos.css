@@ -1805,3 +1805,69 @@ main {
     margin-left: auto;
 
 }
+
+
+/* =========================================
+   AVISO DE RESET DE COLECCIÓN (Etapa 1)
+   Se muestra una sola vez cuando el plantel
+   se actualiza y la colección se reinicia.
+========================================= */
+
+.dataset-notice {
+
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+
+    margin: 16px auto;
+    max-width: 900px;
+    padding: 14px 18px;
+
+    background: var(--surface-light);
+    border: 1px solid var(--green-dark);
+    border-radius: 12px;
+
+    color: var(--white);
+    font-size: 14px;
+    line-height: 1.4;
+
+}
+
+
+.dataset-notice[hidden] {
+    display: none;
+}
+
+
+.dataset-notice span {
+    flex: 1;
+    min-width: 220px;
+}
+
+
+.dataset-notice strong {
+    color: var(--green);
+}
+
+
+.dataset-notice-close {
+
+    flex-shrink: 0;
+    padding: 8px 16px;
+
+    background: var(--green);
+    color: #041008;
+    border: none;
+    border-radius: 8px;
+
+    font-weight: bold;
+    font-size: 13px;
+    cursor: pointer;
+
+}
+
+
+.dataset-notice-close:hover {
+    background: #42e982;
+}
