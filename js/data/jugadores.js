@@ -1,4 +1,18 @@
-const players = [
+// ==========================================
+// DATOS DE JUGADORES (plantel de prueba)
+// ==========================================
+//
+// Plantel de prueba de la V0.3. Se reemplaza por el dataset real de la Liga
+// Profesional en la Etapa 1 (§10). En esa etapa el script de conversión del CSV
+// debe volver a generar ESTE archivo como módulo `.js` (export const JUGADORES),
+// NO como .json: un .json obligaría a fetch() asíncrono y a volver async todo el
+// arranque, sin ninguna ganancia. Decisión registrada en ESTADO.md.
+//
+// El `id` es numérico en esta etapa. En la Etapa 1 la colección guardada se
+// resetea (referencia jugadores de prueba que van a dejar de existir), así que
+// no hace falta migrar el formato del id acá.
+
+export const JUGADORES = [
 
     // =========================
     // ARQUEROS
