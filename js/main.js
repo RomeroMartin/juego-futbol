@@ -6,6 +6,7 @@
 // Importa los módulos, engancha los eventos y hace el primer render.
 
 import { estado } from "./core/estado.js";
+import { guardarPartida } from "./core/storage.js";
 import { showScreen, updateHeader } from "./ui/navegacion.js";
 import { generatePack } from "./ui/paquetes.js";
 import { initFiltrosColeccion } from "./ui/coleccion.js";
@@ -86,6 +87,10 @@ initFiltrosEquipo();
 // ==========================================
 // INICIO
 // ==========================================
+
+// Al cargar, la colección ya pasó por migrar() (§52). La reguardamos una vez
+// para dejar persistida la versión migrada (campos §8 completos, schemaVersion).
+guardarPartida(estado);
 
 updateHeader();
 renderTeam();

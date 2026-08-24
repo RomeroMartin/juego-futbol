@@ -4,18 +4,17 @@
 
 import {
     estado,
-    getPlayersInTeam,
-    getTeamPlayersByPosition,
     isPlayerInTeam
 } from "../core/estado.js";
 
 import { guardarPartida } from "../core/storage.js";
 
 import {
-    calculateAttack,
-    calculateMidfield,
-    calculateDefense,
-    calculateTeamRating,
+    statsAtaque,
+    statsMediocampo,
+    statsDefensa,
+    statsValoracion,
+    ovrMedioPlantel,
     validateTeam
 } from "../core/calculos.js";
 
@@ -29,30 +28,25 @@ const teamAttackElement        = document.getElementById("teamAttack");
 const teamMidfieldElement      = document.getElementById("teamMidfield");
 const teamDefenseElement       = document.getElementById("teamDefense");
 const teamStatusElement        = document.getElementById("teamStatus");
+const teamOvrMedioElement      = document.getElementById("teamOvrMedio");
 
 
 // ==========================================
-// CANTIDAD DISPONIBLE
+// CANTIDAD POSEÍDA (§16.2)
 // ==========================================
 //
-// ⚠️ PASO 1: conserva TODAVÍA la lógica "Utilizado / Disponible" de la V0.3
-// (resta las copias usadas en el XI). Se elimina en un paso posterior de esta
-// etapa según §16.2: las copias nunca se bloquean.
+// Las copias NUNCA se bloquean: un jugador que poseés puede estar en todos tus
+// equipos a la vez. `quantity` es solo un contador (intercambio, venta,
+// estadística). Devolvemos la cantidad poseída tal cual, sin restar las copias
+// usadas en el XI. La única restricción sigue siendo §16.3 (no repetir la misma
+// identidad dentro del mismo XI), que resuelve isPlayerInTeam().
 
-export function getAvailableQuantity(playerId) {
+export function getOwnedQuantity(playerId) {
     const item = estado.collection.find(
         item => item.player.id === playerId
     );
 
-    if (!item) {
-        return 0;
-    }
-
-    const used = getPlayersInTeam()
-        .filter(id => id === playerId)
-        .length;
-
-    return item.quantity - used;
+    return item ? item.quantity : 0;
 }
 
 
@@ -75,8 +69,8 @@ export function addPlayerToTeam(playerId, position) {
         return;
     }
 
-    if (getAvailableQuantity(playerId) <= 0) {
-        alert("No tenés una copia disponible.");
+    if (getOwnedQuantity(playerId) <= 0) {
+        alert("No poseés ese jugador.");
         return;
     }
 
@@ -237,7 +231,7 @@ export function renderAvailablePlayers() {
     filteredCollection.forEach(item => {
         const player = item.player;
 
-        const available = getAvailableQuantity(player.id);
+        const poseidas = getOwnedQuantity(player.id);
 
         const alreadyInTeam = isPlayerInTeam(player.id);
 
@@ -245,7 +239,9 @@ export function renderAvailablePlayers() {
 
         element.className = "available-player";
 
-        if (available <= 0 || alreadyInTeam) {
+        // Solo se deshabilita si ya está en el XI (§16.3). Las copias no se
+        // bloquean (§16.2), así que la cantidad poseída nunca deshabilita.
+        if (alreadyInTeam) {
             element.classList.add("disabled");
         }
 
@@ -278,12 +274,12 @@ export function renderAvailablePlayers() {
 
 
             <div class="available-player-quantity">
-                x${available}
+                x${poseidas}
             </div>
 
         `;
 
-        if (available > 0 && !alreadyInTeam) {
+        if (!alreadyInTeam) {
             element.addEventListener("click", () => {
                 addPlayerToTeam(player.id, player.position);
             });
@@ -299,22 +295,30 @@ export function renderAvailablePlayers() {
 // ==========================================
 
 export function updateTeamStats() {
-    const attack   = calculateAttack();
-    const midfield = calculateMidfield();
-    const defense  = calculateDefense();
-    const rating   = calculateTeamRating();
+    const ataque     = statsAtaque();
+    const mediocampo = statsMediocampo();
+    const defensa    = statsDefensa();
+    const valoracion = statsValoracion();
+    const ovrMedio   = ovrMedioPlantel();
 
     teamAttackElement.textContent =
-        attack === null ? "—" : attack.toFixed(1);
+        ataque === null ? "—" : ataque.toFixed(1);
 
     teamMidfieldElement.textContent =
-        midfield === null ? "—" : midfield.toFixed(1);
+        mediocampo === null ? "—" : mediocampo.toFixed(1);
 
     teamDefenseElement.textContent =
-        defense === null ? "—" : defense.toFixed(1);
+        defensa === null ? "—" : defensa.toFixed(1);
 
+    // Valoración DERIVADA de las tres áreas (§20.4), no promedio de OVR.
     teamRatingElement.textContent =
-        rating === null ? "—" : rating.toFixed(1);
+        valoracion === null ? "—" : valoracion.toFixed(1);
+
+    // OVR medio del plantel: dato de colección, no predictivo (§20.4).
+    if (teamOvrMedioElement) {
+        teamOvrMedioElement.textContent =
+            ovrMedio === null ? "—" : ovrMedio.toFixed(1);
+    }
 
     updateTeamStatus();
 }
