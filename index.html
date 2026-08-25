@@ -130,6 +130,14 @@
                 </button>
 
 
+                <button
+                    id="competeButton"
+                    class="secondary-button hero-secondary-button"
+                >
+                    COMPETIR VS IA
+                </button>
+
+
                 <p class="pack-info">
                     Cada paquete contiene 6 jugadores.
                 </p>
@@ -731,6 +739,178 @@
 
 
         <!-- =====================================
+             COMPETIR — ELEGIR DIFICULTAD
+        ====================================== -->
+
+        <section
+            id="competirScreen"
+            class="screen"
+        >
+
+            <div class="section-header">
+
+                <button
+                    id="backFromCompetir"
+                    class="back-button"
+                >
+                    ← Volver
+                </button>
+
+                <div>
+                    <span class="eyebrow">VS LA IA</span>
+                    <h2>ELEGÍ LA DIFICULTAD</h2>
+                </div>
+
+            </div>
+
+
+            <div
+                id="competeInvalido"
+                class="team-status"
+                hidden
+            >
+                <span class="status-icon">⚠</span>
+                <div>
+                    <strong>NECESITÁS UN XI VÁLIDO</strong>
+                    <span>Armá tu equipo (1 arquero, 4 defensores, 3 medios, 3 delanteros) antes de competir.</span>
+                </div>
+            </div>
+
+
+            <div id="dificultadContenido" class="dificultad-grid"></div>
+
+
+            <div class="competir-acciones">
+                <button
+                    id="verHistorialButton"
+                    class="secondary-button"
+                >
+                    VER HISTORIAL
+                </button>
+            </div>
+
+        </section>
+
+
+
+        <!-- =====================================
+             COMPARACIÓN PREVIA
+        ====================================== -->
+
+        <section
+            id="comparacionScreen"
+            class="screen"
+        >
+
+            <div class="section-header">
+
+                <button
+                    id="backFromComparacion"
+                    class="back-button"
+                >
+                    ← Volver
+                </button>
+
+                <div>
+                    <span class="eyebrow">ANTES DEL PARTIDO</span>
+                    <h2>MI EQUIPO vs RIVAL</h2>
+                </div>
+
+            </div>
+
+
+            <div id="comparacionContenido"></div>
+
+
+            <div
+                id="capAviso"
+                class="cap-aviso"
+                hidden
+            ></div>
+
+
+            <button
+                id="startMatchButton"
+                class="main-button"
+            >
+                COMENZAR PARTIDO
+            </button>
+
+        </section>
+
+
+
+        <!-- =====================================
+             RESULTADO DEL PARTIDO
+        ====================================== -->
+
+        <section
+            id="resultadoScreen"
+            class="screen"
+        >
+
+            <div class="section-header">
+
+                <button
+                    id="backFromResultado"
+                    class="back-button"
+                >
+                    ← Volver
+                </button>
+
+                <div>
+                    <span class="eyebrow">RESULTADO</span>
+                    <h2>FINAL DEL PARTIDO</h2>
+                </div>
+
+            </div>
+
+
+            <div id="resultadoContenido"></div>
+
+
+            <div class="resultado-acciones">
+                <button id="revanchaButton" class="main-button">REVANCHA</button>
+                <button id="resultadoHistorialButton" class="secondary-button">VER HISTORIAL</button>
+            </div>
+
+        </section>
+
+
+
+        <!-- =====================================
+             HISTORIAL DE PARTIDOS
+        ====================================== -->
+
+        <section
+            id="historialScreen"
+            class="screen"
+        >
+
+            <div class="section-header">
+
+                <button
+                    id="backFromHistorial"
+                    class="back-button"
+                >
+                    ← Volver
+                </button>
+
+                <div>
+                    <span class="eyebrow">MIS PARTIDOS</span>
+                    <h2>HISTORIAL</h2>
+                </div>
+
+            </div>
+
+
+            <div id="historialContenido"></div>
+
+        </section>
+
+
+
+        <!-- =====================================
              NAVEGACIÓN
         ====================================== -->
 
@@ -773,6 +953,20 @@
 
                 <small>
                     Mi equipo
+                </small>
+
+            </button>
+
+
+            <button
+                class="nav-button"
+                data-screen="competirScreen"
+            >
+
+                <span>🆚</span>
+
+                <small>
+                    Competir
                 </small>
 
             </button>

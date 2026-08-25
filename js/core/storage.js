@@ -13,6 +13,10 @@ const CLAVE_COLECCION = "futbolFiguritasCollection";
 const CLAVE_PAQUETES  = "futbolFiguritasPacks";
 const CLAVE_EQUIPO    = "futbolFiguritasTeam";
 const CLAVE_DATASET   = "futbolFiguritasDatasetVersion";
+const CLAVE_HISTORIAL = "futbolFiguritasHistorial";
+
+// Máximo de partidos guardados en el historial (se recorta el más viejo).
+const MAX_HISTORIAL = 50;
 
 
 // ==========================================
@@ -116,13 +120,33 @@ export function sincronizarDataset() {
         localStorage.getItem(CLAVE_PAQUETES) !== null ||
         localStorage.getItem(CLAVE_EQUIPO) !== null;
 
-    // Reset al estado inicial.
+    // Reset al estado inicial. También el historial: sus partidos referencian
+    // ids de jugadores que ya no existen en el plantel nuevo.
     localStorage.removeItem(CLAVE_COLECCION);
     localStorage.removeItem(CLAVE_EQUIPO);
     localStorage.removeItem(CLAVE_PAQUETES);
+    localStorage.removeItem(CLAVE_HISTORIAL);
     localStorage.setItem(CLAVE_DATASET, DATASET_VERSION);
 
     return teniaDatos;
+}
+
+
+// ==========================================
+// HISTORIAL DE PARTIDOS (Etapa 3)
+// ==========================================
+
+export function cargarHistorial() {
+    return JSON.parse(localStorage.getItem(CLAVE_HISTORIAL)) || [];
+}
+
+// Agrega un partido al frente del historial (más reciente primero) y recorta.
+export function agregarAlHistorial(registro) {
+    const historial = cargarHistorial();
+    historial.unshift(registro);
+    if (historial.length > MAX_HISTORIAL) historial.length = MAX_HISTORIAL;
+    localStorage.setItem(CLAVE_HISTORIAL, JSON.stringify(historial));
+    return historial;
 }
 
 
