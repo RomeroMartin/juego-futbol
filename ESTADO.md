@@ -1,41 +1,36 @@
-# ESTADO — Después de la Etapa 2 (Motor de partido, headless)
+# ESTADO — Después de la Etapa 3 (Rival IA y pantalla de partido)
 
-> Etapa del plan completada: **2**. Base: Etapas 0 y 1 ya en `main`.
-> Esta etapa **no produce nada visible**: es lógica pura testeada por consola.
+> Etapa del plan completada: **3**. Base: Etapas 0, 1 y 2 ya en `main`.
 
 ## 1. Qué se implementó
 
-- **PRNG con semilla `mulberry32` (§23).** Única fuente de azar del motor.
-  **Cero `Math.random()`** en el motor (verificado con grep).
-- **Motor de partido headless (§22–§26):** `probabilidadDuelo`, `simularPartido`
-  por posesiones, `elegirGoleador` ponderado, eventos `GOL` / `ATAJADA` /
-  `ATAQUE_CORTADO`.
-- **`simular-balance.mjs` (§33):** simulación masiva con equipos **reales** del
-  pool argentino + barrido de calibración de `D` y `FACTOR_GOL`.
-- **Calibración.** Los valores de partida del documento (D=18, factor 0.42) daban
-  un desastre con este pool (4.6 goles, favorito 100% a media diferencia). Se
-  calibraron a **D = 70, FACTOR_GOL = 0.36**.
-- Refactor de soporte: se extrajeron las **fórmulas puras de §20** a
-  `js/core/formulas.js` (sin estado/DOM) para que las use tanto la UI como el
-  motor y los scripts en Node.
+- **`generarRivalIA()` con las 4 dificultades (§31):** FÁCIL −8 / NORMAL 0 /
+  DIFÍCIL +6 / ÉLITE +14, aplicado sobre la **Fuerza Efectiva** del usuario.
+  La IA arma **a ciegas**: solo recibe la fuerza del usuario y la dificultad,
+  nunca su XI ni su composición.
+- **Nombres de equipo ficticios (§31.3):** nunca clubes reales (verificado por
+  test contra los 30 clubes del dataset).
+- **Pantalla de comparación previa:** mis 3 áreas + Valoración vs las del rival.
+  **No se muestra el XI del rival.**
+- **Pantalla de resultado:** marcador, estadísticas (§29) y MVP (§30).
+- **Historial de partidos** (localStorage).
+- **Semilla guardada en cada partido (§53.1):** el registro guarda semilla +
+  Fuerzas Efectivas usadas + ids de ambos equipos → un partido se re-verifica
+  re-simulando.
+- **Sin recompensas:** jugar vs IA no otorga fichas, puntos ni sobres (§15.3 es
+  la Etapa 6). No se tocó `economia`.
 
-### Estado de la tabla de §33 (con D=70 / factor=0.36, 10.000 partidos)
+### Refuerzos pedidos (todos implementados)
 
-| Objetivo | Resultado | |
-|---|---|---|
-| dif 0 → 38-42% victoria | 38.1% | ✓ |
-| dif 0 → 18-22% empates | **27.6%** | ✗ |
-| dif +10 → 63-68% | 64.4% | ✓ |
-| dif máx → ≤87% (techo) | 85.0% | ✓ |
-| goles/partido 2.4-3.2 | 2.44 | ✓ |
-| 0-0 en 6-10% | 8.2% | ✓ |
-| 5+ goles ≤8% | **8.8%** | ✗ (rozando) |
-| perfiles neutrales (sesgo) | cuotas ~49% | ✓ sin sesgo |
-| reproducibilidad | idéntico byte a byte | ✓ |
-
-**6 de 8 objetivos + los dos tests extra.** Decisión tomada con el usuario:
-**aceptar 6/8 y diferir** los dos que faltan a la Etapa 5 (ver §5). No se tocó
-el documento maestro.
+- **Capado COMUNICADO.** Si el pool no alcanza el offset pedido (p. ej. ÉLITE
+  contra un usuario ya fuerte), el rival se capa al máximo real **y se avisa en
+  la pantalla de comparación**. El registro guarda el **offset REAL alcanzado**,
+  no el solicitado.
+- **Variedad del rival.** Dos rivales seguidos en la misma dificultad no dan el
+  mismo XI: el generador elige AL AZAR dentro de la tolerancia (distintos
+  clubes/perfiles, misma Fuerza Efectiva aproximada). Test: 20/20 XI distintos.
+- **Perfiles no degenerados.** Ninguna de las tres áreas del rival se desvía más
+  de 12 puntos de su propia media (nada de equipos 90/40/70).
 
 ## 2. Archivos y qué hace cada uno
 
@@ -43,95 +38,82 @@ Nuevos:
 
 | Archivo | Qué hace |
 |---|---|
-| `js/package.json` | `{ "type": "module" }`. Declara que `js/` son módulos ES **para Node** (así el script de balance importa el motor REAL). No agrega npm ni dependencias; el navegador lo ignora. `scripts/` sigue en CommonJS. |
-| `js/core/prng.js` | `mulberry32` (§23). Puro. |
-| `js/core/formulas.js` | Fórmulas puras de §20 (PESOS, scores, calcularAtaque/Mediocampo/Defensa, calcularValoracion). Sin estado/DOM. |
-| `js/config/motor.js` | Perillas de balance del motor: `D`, `FACTOR_GOL`, rango de posesiones. **Valores calibrados.** |
-| `js/core/motor.js` | Motor: `probabilidadDuelo`, `fuerzaEfectiva` (punto de entrada), `fuerzaEfectivaMedia`, `elegirGoleador`, `simularPartido`. |
-| `scripts/simular-balance.mjs` | Simulación §33 + barrido de calibración + perfiles + tests de reproducibilidad. `node scripts/simular-balance.mjs`. |
+| `js/data/nombresRival.js` | Tokens inventados + `generarNombreRival()`. Nunca clubes reales. |
+| `js/core/rivalIA.js` | `generarRivalIA(fuerzaUsuario, dificultad)`: offset sobre Fuerza Efectiva, armado a ciegas con variedad, perfiles no degenerados, capado con `offsetReal`. |
+| `js/core/partido.js` | **Puro/headless.** `prepararPartido` / `resolverPartido` / `jugarPartido`, `derivarEstadisticas` (§29), `calcularMVP` (§30), `reVerificar` (§53.1). |
+| `js/ui/partido.js` | UI: arma el equipo del usuario desde el estado, pantallas de dificultad / comparación / resultado / historial, wiring. |
+| `scripts/test-rival-ia.mjs` | Test headless: % victoria por dificultad, variedad, cero colisión de nombres, no degenerados, re-verificación por semilla. |
 
 Modificados:
 
 | Archivo | Cambio |
 |---|---|
-| `js/core/calculos.js` | Las fórmulas puras se movieron a `formulas.js`; ahora las importa y re-exporta. Los wrappers que leen el estado (`statsAtaque`, `validateTeam`, etc.) quedan igual. **Sin cambio de comportamiento** (verificado en el navegador). |
+| `js/core/storage.js` | `cargarHistorial` / `agregarAlHistorial` (máx 50). El historial también se borra en el reset de dataset (ids viejos). |
+| `js/ui/navegacion.js` | `showScreen` renderiza competir / historial. |
+| `js/main.js` | `initPartido()` + botón COMPETIR. |
+| `index.html` | Pantallas nuevas + botón "COMPETIR VS IA" + nav "Competir". |
+| `css/estilos.css` | Estilos de las pantallas nuevas. |
 
 ## 3. Decisiones técnicas que conviene recordar
 
-### 3.1. Métrica de bucketeo = ΔFUERZA EFECTIVA (no Valoración) — NO cambiar
-La diferencia entre equipos en la tabla de §33 se mide como **ΔFuerza Efectiva =
-media de las tres áreas (ataque, mediocampo, defensa) que consume el motor**, no
-como ΔValoración.
+### 3.1. El offset va sobre FUERZA EFECTIVA (no Valoración)
+`objetivo = fuerzaEfectivaMedia(usuario) + OFFSET[dificultad]`. Es la métrica
+definida en la Etapa 2 (media de las tres áreas), consistente con lo que consume
+el motor. Verificado: con 300 muestras el `offsetReal` medio da −8 / 0 / +6 y
+ÉLITE queda capado cuando el usuario ya está cerca del techo del pool (~74.5).
 
-**Por qué (importante para la Etapa 5):** el motor no usa la Valoración, usa las
-tres áreas por separado. Y en la Etapa 5 la **matriz de contras (§19.3)** hace
-que la Fuerza Efectiva **dependa del rival** — ahí la Valoración deja de ser
-predictiva **por diseño** (es el objetivo del juego). Si el bucketeo quedara
-atado a la Valoración, la tabla de §33 se rompería en la Etapa 5 y no se podría
-distinguir si falla el motor o la métrica. **La Etapa 5 NO debe cambiar esto por
-inercia.** Hoy las dos coinciden numéricamente (no hay modificadores todavía).
+### 3.2. `partido.js` es PURO; lo que lee el estado vive en `ui/partido.js`
+`partido.js` no importa `estado`/`storage` (así corre headless en Node para el
+test). `construirEquipoUsuario()` y el guardado en historial están en la capa de
+UI. Mantener esa separación.
 
-### 3.2. Valores calibrados: D=70, FACTOR_GOL=0.36
-El documento daba D=18 y factor 0.42 como **punto de partida** (lo dice
-explícitamente). Con el pool real la Fuerza Efectiva comprime a un rango ~52–74,
-así que D=18 es demasiado determinista (a Δ15 el favorito ganaba 100%). D=70 abre
-la varianza y factor 0.36 baja los goles a 2.44. Están en `js/config/motor.js`.
+### 3.3. Nombres del rival: club ficticio, jugadores reales
+El nombre de EQUIPO es inventado (§31.3/§46). Los JUGADORES del rival salen del
+pool real (única fuente), así que sus nombres son reales — eso está permitido:
+§46 es sobre clubes, no sobre nombres de jugador. El MVP puede ser del rival.
 
-### 3.3. `fuerzaEfectiva(equipo, equipoRival)` es el punto de entrada de la Etapa 5
-Hoy devuelve las tres áreas base + `frecuencia:1` y `calidadOcasion:1` (neutros).
-**Acá** la Etapa 5 inserta el modificador de formación, las mentalidades y la
-matriz de contras (§20.5) — por eso `equipoRival` ya está en la firma aunque no
-se use todavía. **No reescribir el motor: solo enriquecer esta función.**
+### 3.4. MVP: asistencias y recuperaciones quedan en 0 hasta V1.5
+El motor V1 solo produce GOL / ATAJADA / ATAQUE_CORTADO. El MVP (§30) usa
+**Goles ×10 y Atajadas ×3**; **Asistencias (×6) y Recuperaciones (×2) suman 0**
+porque esos eventos son de V1.5/V2 y todavía no existen. **No es un olvido.**
 
-### 3.4. `js/package.json` con `{"type":"module"}`
-Necesario para correr el motor real desde Node (validar el balance sobre el
-código que se envía, no una copia). No hay npm ni dependencias. `scripts/` no
-tiene package.json, así que los scripts de la Etapa 1 (CommonJS) siguen igual.
+### 3.5. Estadísticas (§29) sin tiros desviados
+Se muestran Posesión, Llegadas al arco (GOL+ATAJADA) y Goles. En el modelo V1
+todos los tiros son al arco (no hay tiro desviado hasta V1.5): no se inventan.
 
-### 3.5. Formato de "equipo" que consume el motor
-```
-{ id, arquero, defensores:[4], medios:[3], delanteros:[3] }
-```
-Objetos jugador del modelo §8. El motor calcula las áreas con `formulas.js`.
+## 4. Resultados de los tests
 
-## 4. Hallazgos del pool real
+- **% victoria (300 partidos, XI nivel 68):** FÁCIL 63% / NORMAL 36% (empates
+  28%, simétrico con las derrotas) / DIFÍCIL 23% / ÉLITE 16%. Monótono y
+  coherente: FÁCIL se gana, ÉLITE se pierde.
+- **Variedad:** 20/20 XI distintos en NORMAL; se vieron los 30 clubes.
+- **Nombres:** 206 nombres generables, **0 colisiones** con clubes reales.
+- **No degenerados:** peor desvío de área observado 10.7 (≤ 12).
+- **Re-verificación:** 30 partidos re-simulados con su semilla dan el mismo
+  marcador.
+- **Navegador:** 20 partidos seguidos sin errores; historial y registro OK; la
+  comparación no muestra el XI del rival.
 
-- **+30 de ΔFuerza Efectiva es INALCANZABLE con equipos reales.** El máximo real
-  (mejor XI vs peor XI) es **~22** (fuerzas ~74.5 vs ~52). Por eso el techo del
-  87% se verifica en la banda máxima alcanzable (~20), no en +30. Ningún matchup
-  real supera el 87% (máximo medido 85%).
-- **El motor no tiene sesgo de perfil:** equipos ofensivos, defensivos y
-  equilibrados de igual Fuerza Efectiva ganan a tasas ~iguales (cuota decisiva
-  ~49% en las tres cruzas). No hay que corregir nada de eso.
+## 5. Advertencias para la próxima etapa (Etapa 4 — Relato)
 
-## 5. Pendiente / deuda para la Etapa 5
+- El relato (§28) se arma desde `registro.eventos` (cada evento ya trae
+  `minuto`, `tipo`, `equipo` y, en los goles, `autor`). Mínimo **6 plantillas
+  por tipo de evento**. Los goles del relato **deben coincidir con el marcador**
+  (usar los eventos GOL, no re-sortear).
+- El relato usa los nombres reales del XI (los `autor` son ids; mapear a nombre
+  vía la colección / catálogo).
+- El relato NO cambia el motor: es presentación de los eventos ya calculados.
+- Recordatorio Etapa 5: las mentalidades y la matriz de contras entran por
+  `fuerzaEfectiva(equipo, rival)` en `motor.js`; ahí también conviene revisar la
+  deuda de balance de la Etapa 2 (empates / 5+ goles). El bucketeo por ΔFuerza
+  Efectiva NO se cambia.
+- No cambiar `js/data/jugadores.js` a `.json`.
 
-- **Empates a dif-0 (27.6%) y 5+ goles (8.8%) no cumplen §33.** Están acoplados
-  por el conteo de goles y tiran en direcciones opuestas: bajar empates pide más
-  goles, lo que infla el "5+". Con **solo D y FACTOR_GOL** (las perillas de esta
-  etapa) no se pueden cumplir las dos a la vez — se barrió toda la grilla. Se
-  difieren a la Etapa 5, donde las **mentalidades ajustan la cantidad de
-  posesiones (§24)** y aparece un tercer grado de libertad para separar la tasa
-  de empate de la varianza del "5+". (27% de empates entre equipos idénticos es
-  normal en fútbol real; el objetivo 18-22% de §33 es exigente para dif-0.)
+## 6. Cómo testear que esta etapa quedó bien
 
-## 6. Advertencias para la próxima etapa (Etapa 3 — Rival IA y pantalla)
-
-- El motor ya está listo y **headless**. La Etapa 3 lo engancha a la UI:
-  construir el objeto `equipo` (§3.5) desde el estado del jugador y llamar
-  `simularPartido(equipoA, equipoB, semilla)`.
-- **Generar la semilla del partido y guardarla** (§53.1): un partido se
-  re-verifica desde `{ semilla, equipoA, equipoB }`.
-- El rival IA (§31) y sus nombres ficticios (nunca clubes reales) son de la
-  Etapa 3. El relato (§28) es Etapa 4. Nada de eso se tocó acá.
-- No cambiar `js/data/jugadores.js` a `.json` (sigue siendo `.js`).
-
-## 7. Cómo testear que esta etapa quedó bien
-
-1. `node scripts/simular-balance.mjs` corre, imprime la tabla ANTES (D=18/0.42),
-   el barrido de calibración, la tabla DESPUÉS (D=70/0.36), el análisis de
-   perfiles y los tests de reproducibilidad.
-2. "misma semilla → idéntico" y "semilla distinta → distinto" dan ✓.
-3. El techo del 87% se respeta (máx 85%).
-4. El juego en el navegador sigue funcionando igual (el motor todavía no está
-   enganchado a la UI; eso es Etapa 3).
+1. `node scripts/test-rival-ia.mjs` → todos los checks en verde.
+2. En el navegador: armar un XI válido, COMPETIR, elegir dificultad, ver la
+   comparación (sin XI rival), COMENZAR, ver el resultado con MVP y stats.
+3. En FÁCIL se gana la mayoría; en ÉLITE se pierde la mayoría.
+4. El historial guarda los partidos; jugar 20 seguidos no rompe nada.
+5. Contra un usuario fuerte, ÉLITE muestra el aviso de capado.

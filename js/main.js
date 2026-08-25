@@ -11,6 +11,7 @@ import { showScreen, updateHeader } from "./ui/navegacion.js";
 import { generatePack } from "./ui/paquetes.js";
 import { initFiltrosColeccion } from "./ui/coleccion.js";
 import { renderTeam, initFiltrosEquipo } from "./ui/equipo.js";
+import { initPartido } from "./ui/partido.js";
 
 
 // ==========================================
@@ -82,6 +83,7 @@ document
 
 initFiltrosColeccion();
 initFiltrosEquipo();
+initPartido();
 
 
 // ==========================================

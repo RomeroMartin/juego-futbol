@@ -10,6 +10,7 @@ import {
 
 import { renderCollection } from "./coleccion.js";
 import { renderTeam } from "./equipo.js";
+import { renderCompetir, renderHistorial } from "./partido.js";
 
 
 // ==========================================
@@ -52,6 +53,14 @@ export function showScreen(screenId) {
 
     if (screenId === "teamScreen") {
         renderTeam();
+    }
+
+    if (screenId === "competirScreen") {
+        renderCompetir();
+    }
+
+    if (screenId === "historialScreen") {
+        renderHistorial();
     }
 }
 
