@@ -2130,3 +2130,65 @@ main {
     font-size: 12px;
     margin-top: 2px;
 }
+
+
+/* =========================================
+   RELATO DEL PARTIDO (Etapa 4)
+========================================= */
+
+.relato-lineas {
+    max-height: 55vh;
+    overflow-y: auto;
+    padding: 8px 4px;
+    margin-bottom: 16px;
+}
+
+.relato-linea {
+    display: flex;
+    gap: 12px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    animation: relatoAparece 0.3s ease;
+}
+
+@keyframes relatoAparece {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.relato-min {
+    flex-shrink: 0;
+    width: 34px;
+    text-align: right;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    padding-top: 1px;
+}
+
+.relato-texto {
+    color: var(--white);
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.relato-gol {
+    background: var(--surface-light);
+    border-color: var(--green);
+}
+.relato-gol .relato-texto {
+    color: var(--green);
+    font-weight: bold;
+}
+
+.relato-marco {
+    background: transparent;
+    border-style: dashed;
+}
+.relato-marco .relato-texto {
+    color: var(--muted);
+    font-style: italic;
+}

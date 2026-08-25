@@ -7,12 +7,15 @@ import { agregarAlHistorial, cargarHistorial } from "../core/storage.js";
 import { calcularValoracion } from "../core/formulas.js";
 import { OFFSET_DIFICULTAD } from "../core/rivalIA.js";
 import { prepararPartido, resolverPartido } from "../core/partido.js";
+import { generarRelato } from "../core/relato.js";
 import { showScreen } from "./navegacion.js";
 
 
 // Estado del flujo de partido.
 let partidoPreparado = null;
 let ultimaDificultad = null;
+let ultimoRegistro = null;
+let relatoTimer = null;
 
 
 // Info de presentación de cada dificultad.
@@ -158,9 +161,63 @@ function comenzarPartido() {
     const registro = resolverPartido(partidoPreparado);
     agregarAlHistorial(registro);
     ultimaDificultad = registro.dificultad;
+    ultimoRegistro = registro;
 
-    renderResultado(registro);
-    showScreen("resultadoScreen");
+    // Relato progresivo antes del resultado.
+    reproducirRelato(generarRelato(registro));
+    showScreen("relatoScreen");
+}
+
+
+// ==========================================
+// PANTALLA: RELATO PROGRESIVO
+// ==========================================
+
+const RETARDO_LINEA = 900;   // ms entre líneas
+const RETARDO_GOL = 1500;    // los goles respiran un poco más
+
+function reproducirRelato(lineas) {
+    detenerRelato();
+
+    const cont = document.getElementById("relatoLineas");
+    const boton = document.getElementById("relatoAvanzar");
+    cont.innerHTML = "";
+    boton.textContent = "SALTEAR ▶";
+
+    let i = 0;
+    const paso = () => {
+        if (i >= lineas.length) {
+            boton.textContent = "VER RESULTADO ▶";
+            relatoTimer = null;
+            return;
+        }
+        const l = lineas[i++];
+        const clase = l.esGol ? "relato-linea relato-gol"
+            : (l.tipo === "INICIO" || l.tipo === "FINAL") ? "relato-linea relato-marco"
+            : "relato-linea";
+        const minuto = (l.tipo === "INICIO") ? "" : `${l.minuto}'`;
+        cont.insertAdjacentHTML("beforeend",
+            `<div class="${clase}"><span class="relato-min">${minuto}</span><span class="relato-texto">${l.texto}</span></div>`);
+        cont.scrollTop = cont.scrollHeight;
+        relatoTimer = setTimeout(paso, l.esGol ? RETARDO_GOL : RETARDO_LINEA);
+    };
+    paso();
+}
+
+function detenerRelato() {
+    if (relatoTimer) {
+        clearTimeout(relatoTimer);
+        relatoTimer = null;
+    }
+}
+
+// El botón saltea (durante el relato) o va al resultado (al terminar).
+function terminarRelato() {
+    detenerRelato();
+    if (ultimoRegistro) {
+        renderResultado(ultimoRegistro);
+        showScreen("resultadoScreen");
+    }
 }
 
 
@@ -256,6 +313,9 @@ export function initPartido() {
     document.getElementById("startMatchButton")
         .addEventListener("click", comenzarPartido);
 
+    document.getElementById("relatoAvanzar")
+        .addEventListener("click", terminarRelato);
+
     document.getElementById("revanchaButton")
         .addEventListener("click", () => {
             if (ultimaDificultad) elegirDificultad(ultimaDificultad);
@@ -272,6 +332,8 @@ export function initPartido() {
         .addEventListener("click", () => showScreen("homeScreen"));
     document.getElementById("backFromComparacion")
         .addEventListener("click", () => showScreen("competirScreen"));
+    document.getElementById("backFromRelato")
+        .addEventListener("click", () => { detenerRelato(); showScreen("competirScreen"); });
     document.getElementById("backFromResultado")
         .addEventListener("click", () => showScreen("competirScreen"));
     document.getElementById("backFromHistorial")

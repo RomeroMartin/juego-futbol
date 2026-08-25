@@ -1,36 +1,22 @@
-# ESTADO — Después de la Etapa 3 (Rival IA y pantalla de partido)
+# ESTADO — Después de la Etapa 4 (Relato del partido) 🎯 HITO: JUEGO JUGABLE
 
-> Etapa del plan completada: **3**. Base: Etapas 0, 1 y 2 ya en `main`.
+> Etapa del plan completada: **4**. Base: Etapas 0–3 ya en `main`.
+> Con esta etapa el **ciclo completo** está cerrado: abrir paquete → colección →
+> armar XI → competir → relato → resultado → historial.
 
 ## 1. Qué se implementó
 
-- **`generarRivalIA()` con las 4 dificultades (§31):** FÁCIL −8 / NORMAL 0 /
-  DIFÍCIL +6 / ÉLITE +14, aplicado sobre la **Fuerza Efectiva** del usuario.
-  La IA arma **a ciegas**: solo recibe la fuerza del usuario y la dificultad,
-  nunca su XI ni su composición.
-- **Nombres de equipo ficticios (§31.3):** nunca clubes reales (verificado por
-  test contra los 30 clubes del dataset).
-- **Pantalla de comparación previa:** mis 3 áreas + Valoración vs las del rival.
-  **No se muestra el XI del rival.**
-- **Pantalla de resultado:** marcador, estadísticas (§29) y MVP (§30).
-- **Historial de partidos** (localStorage).
-- **Semilla guardada en cada partido (§53.1):** el registro guarda semilla +
-  Fuerzas Efectivas usadas + ids de ambos equipos → un partido se re-verifica
-  re-simulando.
-- **Sin recompensas:** jugar vs IA no otorga fichas, puntos ni sobres (§15.3 es
-  la Etapa 6). No se tocó `economia`.
-
-### Refuerzos pedidos (todos implementados)
-
-- **Capado COMUNICADO.** Si el pool no alcanza el offset pedido (p. ej. ÉLITE
-  contra un usuario ya fuerte), el rival se capa al máximo real **y se avisa en
-  la pantalla de comparación**. El registro guarda el **offset REAL alcanzado**,
-  no el solicitado.
-- **Variedad del rival.** Dos rivales seguidos en la misma dificultad no dan el
-  mismo XI: el generador elige AL AZAR dentro de la tolerancia (distintos
-  clubes/perfiles, misma Fuerza Efectiva aproximada). Test: 20/20 XI distintos.
-- **Perfiles no degenerados.** Ninguna de las tres áreas del rival se desvía más
-  de 12 puntos de su propia media (nada de equipos 90/40/70).
+- **Sistema de plantillas de relato (§28):** ≥6 plantillas por tipo de evento
+  (GOL, ATAJADA, ATAQUE_CORTADO) + líneas de inicio y final.
+- **`generarRelato(registro)`:** arma el relato con **minutos y nombres reales
+  del XI**, eligiendo plantillas con un PRNG sembrado desde la semilla del
+  partido (reproducible). Puro/headless.
+- **Relato progresivo en la UI:** las líneas aparecen una a una (los goles
+  respiran un poco más), con botón **SALTEAR** que corta y va directo al
+  resultado. Flujo: comparación → COMENZAR → **relato** → resultado.
+- No se tocó el motor: el relato es **pura presentación** de los eventos ya
+  calculados. Los goles del relato salen de los eventos GOL, así que **coinciden
+  siempre con el marcador**.
 
 ## 2. Archivos y qué hace cada uno
 
@@ -38,82 +24,76 @@ Nuevos:
 
 | Archivo | Qué hace |
 |---|---|
-| `js/data/nombresRival.js` | Tokens inventados + `generarNombreRival()`. Nunca clubes reales. |
-| `js/core/rivalIA.js` | `generarRivalIA(fuerzaUsuario, dificultad)`: offset sobre Fuerza Efectiva, armado a ciegas con variedad, perfiles no degenerados, capado con `offsetReal`. |
-| `js/core/partido.js` | **Puro/headless.** `prepararPartido` / `resolverPartido` / `jugarPartido`, `derivarEstadisticas` (§29), `calcularMVP` (§30), `reVerificar` (§53.1). |
-| `js/ui/partido.js` | UI: arma el equipo del usuario desde el estado, pantallas de dificultad / comparación / resultado / historial, wiring. |
-| `scripts/test-rival-ia.mjs` | Test headless: % victoria por dificultad, variedad, cero colisión de nombres, no degenerados, re-verificación por semilla. |
+| `js/data/plantillasRelato.js` | Plantillas por tipo de evento (≥6 c/u) + inicio, con placeholders. |
+| `js/core/relato.js` | `generarRelato(registro)` puro: reconstruye nombres desde ids, PRNG sembrado en la semilla, devuelve `[{minuto, tipo, texto, esGol}]`. |
+| `scripts/test-relato.mjs` | Test headless: goles=marcador, nombres ∈ XI, ≥6 plantillas, variedad, reproducibilidad. |
 
 Modificados:
 
 | Archivo | Cambio |
 |---|---|
-| `js/core/storage.js` | `cargarHistorial` / `agregarAlHistorial` (máx 50). El historial también se borra en el reset de dataset (ids viejos). |
-| `js/ui/navegacion.js` | `showScreen` renderiza competir / historial. |
-| `js/main.js` | `initPartido()` + botón COMPETIR. |
-| `index.html` | Pantallas nuevas + botón "COMPETIR VS IA" + nav "Competir". |
-| `css/estilos.css` | Estilos de las pantallas nuevas. |
+| `js/ui/partido.js` | Flujo con relato progresivo (`reproducirRelato` / `terminarRelato`) entre COMENZAR y el resultado. |
+| `index.html` | Pantalla `relatoScreen` + botón SALTEAR. |
+| `css/estilos.css` | Estilos del relato (línea por minuto, goles resaltados, animación de aparición). |
 
 ## 3. Decisiones técnicas que conviene recordar
 
-### 3.1. El offset va sobre FUERZA EFECTIVA (no Valoración)
-`objetivo = fuerzaEfectivaMedia(usuario) + OFFSET[dificultad]`. Es la métrica
-definida en la Etapa 2 (media de las tres áreas), consistente con lo que consume
-el motor. Verificado: con 300 muestras el `offsetReal` medio da −8 / 0 / +6 y
-ÉLITE queda capado cuando el usuario ya está cerca del techo del pool (~74.5).
-
-### 3.2. `partido.js` es PURO; lo que lee el estado vive en `ui/partido.js`
-`partido.js` no importa `estado`/`storage` (así corre headless en Node para el
-test). `construirEquipoUsuario()` y el guardado en historial están en la capa de
-UI. Mantener esa separación.
-
-### 3.3. Nombres del rival: club ficticio, jugadores reales
-El nombre de EQUIPO es inventado (§31.3/§46). Los JUGADORES del rival salen del
-pool real (única fuente), así que sus nombres son reales — eso está permitido:
-§46 es sobre clubes, no sobre nombres de jugador. El MVP puede ser del rival.
-
-### 3.4. MVP: asistencias y recuperaciones quedan en 0 hasta V1.5
-El motor V1 solo produce GOL / ATAJADA / ATAQUE_CORTADO. El MVP (§30) usa
-**Goles ×10 y Atajadas ×3**; **Asistencias (×6) y Recuperaciones (×2) suman 0**
-porque esos eventos son de V1.5/V2 y todavía no existen. **No es un olvido.**
-
-### 3.5. Estadísticas (§29) sin tiros desviados
-Se muestran Posesión, Llegadas al arco (GOL+ATAJADA) y Goles. En el modelo V1
-todos los tiros son al arco (no hay tiro desviado hasta V1.5): no se inventan.
+- **El relato es reproducible.** Usa `mulberry32(semilla ^ constante)` — un
+  stream propio, separado del motor — para elegir plantillas. El mismo partido
+  se relata siempre igual. No usa `Math.random()`.
+- **Funciona desde el historial.** `generarRelato` reconstruye los nombres
+  desde los ids guardados (catálogo `JUGADORES`), así que un partido viejo se
+  puede volver a relatar sin tener los objetos jugador en memoria.
+- **Los goles del relato = marcador**, por construcción (se recorren los eventos
+  GOL reales; no se re-sortea nada).
+- El nombre del rival en el relato es el ficticio (§31.3); los nombres de los
+  jugadores son reales (del pool).
 
 ## 4. Resultados de los tests
 
-- **% victoria (300 partidos, XI nivel 68):** FÁCIL 63% / NORMAL 36% (empates
-  28%, simétrico con las derrotas) / DIFÍCIL 23% / ÉLITE 16%. Monótono y
-  coherente: FÁCIL se gana, ÉLITE se pierde.
-- **Variedad:** 20/20 XI distintos en NORMAL; se vieron los 30 clubes.
-- **Nombres:** 206 nombres generables, **0 colisiones** con clubes reales.
-- **No degenerados:** peor desvío de área observado 10.7 (≤ 12).
-- **Re-verificación:** 30 partidos re-simulados con su semilla dan el mismo
-  marcador.
-- **Navegador:** 20 partidos seguidos sin errores; historial y registro OK; la
-  comparación no muestra el XI del rival.
+- **Headless (`node scripts/test-relato.mjs`):** ≥6 plantillas por tipo, goles =
+  marcador en 10 partidos, cada gol nombra a su autor real (∈ XI atacante), 29
+  líneas de gol distintas acumuladas (variedad), relato determinista.
+- **Navegador:** el relato aparece progresivamente, SALTEAR va al resultado,
+  10 partidos por el flujo completo sin errores.
 
-## 5. Advertencias para la próxima etapa (Etapa 4 — Relato)
+## 5. 🎯 HITO — PARÁ ACÁ Y JUGÁ
 
-- El relato (§28) se arma desde `registro.eventos` (cada evento ya trae
-  `minuto`, `tipo`, `equipo` y, en los goles, `autor`). Mínimo **6 plantillas
-  por tipo de evento**. Los goles del relato **deben coincidir con el marcador**
-  (usar los eventos GOL, no re-sortear).
-- El relato usa los nombres reales del XI (los `autor` son ids; mapear a nombre
-  vía la colección / catálogo).
-- El relato NO cambia el motor: es presentación de los eventos ya calculados.
-- Recordatorio Etapa 5: las mentalidades y la matriz de contras entran por
-  `fuerzaEfectiva(equipo, rival)` en `motor.js`; ahí también conviene revisar la
-  deuda de balance de la Etapa 2 (empates / 5+ goles). El bucketeo por ΔFuerza
-  Efectiva NO se cambia.
+El juego está **jugable de punta a punta**. Según el plan (Etapa 4), este es el
+momento de **jugarlo una semana y pasárselo a dos amigos**, y responder:
+- ¿Dan ganas de jugar otro partido?
+- ¿Dan ganas de abrir otro paquete?
+- ¿Se siente injusto cuando perdés?
+
+Si las dos primeras respuestas son "no", el problema no se arregla con torneos:
+hay que revisar el diseño antes de seguir.
+
+## 6. Pendientes conocidos (no son de esta etapa)
+
+- **Anti-bloqueo (§13):** hoy los paquetes son 100% al azar, así que un usuario
+  nuevo puede quedarse sin poder armar el XI (le faltan delanteros, la posición
+  más escasa). El arreglo real —5 paquetes de bienvenida con composición
+  garantizada + pity de arquero— es la **Etapa 6**. Workaround de testeo:
+  `localStorage.setItem('futbolFiguritasPacks','15'); location.reload()`.
+- **Deuda de balance (Etapa 2):** empates altos / cola de 5+ goles, a cerrar en
+  la Etapa 5 con las mentalidades (mueven la varianza de posesiones).
+
+## 7. Advertencias para la próxima etapa (Etapa 5 — Formaciones y mentalidades)
+
+- Las mentalidades y la matriz de contras (§19) entran por
+  `fuerzaEfectiva(equipo, rival)` en `js/core/motor.js` — el punto de entrada ya
+  está preparado (hoy `frecuencia`/`calidadOcasion` = 1). **No reescribir el
+  motor: solo enriquecer esa función.**
+- Re-correr `scripts/simular-balance.mjs` con el sistema completo y revisar la
+  deuda de empates/5+ goles. **El bucketeo por ΔFuerza Efectiva NO se cambia.**
+- La mentalidad del rival NO se revela antes del partido (§19.5); el análisis
+  táctico va DESPUÉS (podría sumarse al relato/resultado).
 - No cambiar `js/data/jugadores.js` a `.json`.
 
-## 6. Cómo testear que esta etapa quedó bien
+## 8. Cómo testear que esta etapa quedó bien
 
-1. `node scripts/test-rival-ia.mjs` → todos los checks en verde.
-2. En el navegador: armar un XI válido, COMPETIR, elegir dificultad, ver la
-   comparación (sin XI rival), COMENZAR, ver el resultado con MVP y stats.
-3. En FÁCIL se gana la mayoría; en ÉLITE se pierde la mayoría.
-4. El historial guarda los partidos; jugar 20 seguidos no rompe nada.
-5. Contra un usuario fuerte, ÉLITE muestra el aviso de capado.
+1. `node scripts/test-relato.mjs` → todo en verde.
+2. En el navegador: jugar un partido y ver el relato aparecer con minutos y
+   nombres reales; los goles del relato coinciden con el marcador; SALTEAR
+   funciona.
+3. Jugar 10 partidos y verificar que el relato no se siente repetido.
