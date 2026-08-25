@@ -1,40 +1,41 @@
-# ESTADO — Después de la Etapa 1 (Datos reales y rareza)
+# ESTADO — Después de la Etapa 2 (Motor de partido, headless)
 
-> Etapa del plan completada: **1**. Base: la Etapa 0 ya está en `main`.
+> Etapa del plan completada: **2**. Base: Etapas 0 y 1 ya en `main`.
+> Esta etapa **no produce nada visible**: es lógica pura testeada por consola.
 
-## 1. Qué se implementó en esta etapa
+## 1. Qué se implementó
 
-- **Dataset real de la Liga Profesional argentina.** Se reemplazó el plantel de
-  prueba de 18 jugadores por los **869 reales** (30 clubes), extraídos del CSV
-  de EA FC 26.
-- **`scripts/convertir-dataset.js`** — genera `js/data/jugadores.js` desde el
-  CSV: filtra la liga argentina, mapea al modelo §8 y asigna rareza por
-  percentiles (§11.2).
-- **`scripts/analizar-pool.js`** — análisis del pool (total, por posición con
-  foco en arqueros, por rareza, histograma de Overall). Fue el primer
-  entregable, antes de congelar la rareza.
-- **`scripts/lib/dataset.js`** — lógica compartida por ambos scripts (parseo
-  CSV, mapeo de posiciones, rareza). Única copia del mapeo, para que no se
-  desincronice.
-- **Rareza por percentiles (§11.2)** precalculada en cada jugador (campo
-  `rarity`). La carta de UI ahora usa `player.rarity`.
-- **Reset explícito y avisado de la colección**: al detectar que el plantel
-  cambió, se resetea la partida al estado inicial y se le muestra al usuario un
-  aviso ("el plantel se actualizó… tu colección se reinició").
-- README con la fuente del dataset (Kaggle) y cómo regenerarlo.
+- **PRNG con semilla `mulberry32` (§23).** Única fuente de azar del motor.
+  **Cero `Math.random()`** en el motor (verificado con grep).
+- **Motor de partido headless (§22–§26):** `probabilidadDuelo`, `simularPartido`
+  por posesiones, `elegirGoleador` ponderado, eventos `GOL` / `ATAJADA` /
+  `ATAQUE_CORTADO`.
+- **`simular-balance.mjs` (§33):** simulación masiva con equipos **reales** del
+  pool argentino + barrido de calibración de `D` y `FACTOR_GOL`.
+- **Calibración.** Los valores de partida del documento (D=18, factor 0.42) daban
+  un desastre con este pool (4.6 goles, favorito 100% a media diferencia). Se
+  calibraron a **D = 70, FACTOR_GOL = 0.36**.
+- Refactor de soporte: se extrajeron las **fórmulas puras de §20** a
+  `js/core/formulas.js` (sin estado/DOM) para que las use tanto la UI como el
+  motor y los scripts en Node.
 
-### Verificación del pool (checkpoint del histograma)
+### Estado de la tabla de §33 (con D=70 / factor=0.36, 10.000 partidos)
 
-El pool real **coincide casi exacto** con lo que asume §11 — **no hizo falta
-recalibrar** §11 ni §14:
-
-| | Pool real | §11 espera |
+| Objetivo | Resultado | |
 |---|---|---|
-| Total | 869 | ~869 |
-| Clubes | 30 | ~30 |
-| OVR (mín/máx/media/mediana) | 50 / 82 / 67.6 / 68 | tope ~82, sin 85+ |
-| Arqueros | 88 | ≥60 (test) |
-| LEYENDA / ESTRELLA / DESTACADO / ORO / COMÚN | 8 / 35 / 130 / 261 / 435 | 9 / 35 / 130 / 260 / 435 |
+| dif 0 → 38-42% victoria | 38.1% | ✓ |
+| dif 0 → 18-22% empates | **27.6%** | ✗ |
+| dif +10 → 63-68% | 64.4% | ✓ |
+| dif máx → ≤87% (techo) | 85.0% | ✓ |
+| goles/partido 2.4-3.2 | 2.44 | ✓ |
+| 0-0 en 6-10% | 8.2% | ✓ |
+| 5+ goles ≤8% | **8.8%** | ✗ (rozando) |
+| perfiles neutrales (sesgo) | cuotas ~49% | ✓ sin sesgo |
+| reproducibilidad | idéntico byte a byte | ✓ |
+
+**6 de 8 objetivos + los dos tests extra.** Decisión tomada con el usuario:
+**aceptar 6/8 y diferir** los dos que faltan a la Etapa 5 (ver §5). No se tocó
+el documento maestro.
 
 ## 2. Archivos y qué hace cada uno
 
@@ -42,94 +43,95 @@ Nuevos:
 
 | Archivo | Qué hace |
 |---|---|
-| `scripts/lib/dataset.js` | Tooling Node (CommonJS): parseo CSV, `MAPA_POSICION`, `asignarRarezas` (§11.2). Única copia de esa lógica. |
-| `scripts/analizar-pool.js` | Reporta la composición del pool. Se corre con `node scripts/analizar-pool.js`. |
-| `scripts/convertir-dataset.js` | Genera `js/data/jugadores.js` desde el CSV. `node scripts/convertir-dataset.js`. |
-| `js/config/dataset.js` | `DATASET_VERSION` del plantel activo (dispara el reset de colección). |
-| `.gitignore` | Ignora `data-raw/` (CSV con licencia de EA, §10.2). |
-| `data-raw/EAFC26Men.csv` | CSV crudo. **NO versionado.** Se baja de Kaggle (ver README). |
+| `js/package.json` | `{ "type": "module" }`. Declara que `js/` son módulos ES **para Node** (así el script de balance importa el motor REAL). No agrega npm ni dependencias; el navegador lo ignora. `scripts/` sigue en CommonJS. |
+| `js/core/prng.js` | `mulberry32` (§23). Puro. |
+| `js/core/formulas.js` | Fórmulas puras de §20 (PESOS, scores, calcularAtaque/Mediocampo/Defensa, calcularValoracion). Sin estado/DOM. |
+| `js/config/motor.js` | Perillas de balance del motor: `D`, `FACTOR_GOL`, rango de posesiones. **Valores calibrados.** |
+| `js/core/motor.js` | Motor: `probabilidadDuelo`, `fuerzaEfectiva` (punto de entrada), `fuerzaEfectivaMedia`, `elegirGoleador`, `simularPartido`. |
+| `scripts/simular-balance.mjs` | Simulación §33 + barrido de calibración + perfiles + tests de reproducibilidad. `node scripts/simular-balance.mjs`. |
 
 Modificados:
 
 | Archivo | Cambio |
 |---|---|
-| `js/data/jugadores.js` | **Regenerado**: 869 jugadores reales, modelo §8 + `detailedPosition`, rareza precalculada. Archivo generado, no editar a mano. |
-| `js/core/storage.js` | `sincronizarDataset()`: reset explícito de la colección cuando cambia el plantel. |
-| `js/core/estado.js` | Corre `sincronizarDataset()` antes de cargar; exporta `datasetReseteado`. |
-| `js/main.js` | Muestra el aviso de reset si `datasetReseteado`. |
-| `js/ui/componentes.js` | La carta usa `player.rarity` (fallback a `getRarity`). |
-| `index.html` + `css/estilos.css` | Aviso de reset de colección (banner descartable). |
-| `README.md` | Sección Dataset: URL de Kaggle, archivo, cómo regenerar. |
+| `js/core/calculos.js` | Las fórmulas puras se movieron a `formulas.js`; ahora las importa y re-exporta. Los wrappers que leen el estado (`statsAtaque`, `validateTeam`, etc.) quedan igual. **Sin cambio de comportamiento** (verificado en el navegador). |
 
 ## 3. Decisiones técnicas que conviene recordar
 
-### 3.1. Liga argentina = `"LPF"` en el dataset
-De las 45 ligas del CSV, la argentina figura como **`LPF`** (869 jugadores, 30
-clubes). Ojo: `Libertadores` y `Sudamericana` son torneos continentales con
-clubes de otros países — **no** entran.
+### 3.1. Métrica de bucketeo = ΔFUERZA EFECTIVA (no Valoración) — NO cambiar
+La diferencia entre equipos en la tabla de §33 se mide como **ΔFuerza Efectiva =
+media de las tres áreas (ataque, mediocampo, defensa) que consume el motor**, no
+como ΔValoración.
 
-### 3.2. Mapeo de posiciones: 4 categorías + se guarda la granular
-El dataset trae 12 posiciones granulares (GK, CB, RB, LB, CDM, CM, CAM, LM, RM,
-ST, LW, RW). El juego usa 4 (§9). Mapeo (decisión de esta etapa, **estándar**):
-- `GK→POR` · `CB/RB/LB→DEF` · `CDM/CM/CAM/LM/RM→MED` · `ST/LW/RW→DEL`.
-- **Además se guarda la posición granular en `detailedPosition`** para no perder
-  el dato. No se descartó nada del dataset. Queda disponible para un eventual
-  sistema de posiciones más rico (§18, posiciones secundarias) sin reconvertir.
-- El mapeo vive en **un solo lugar**: `scripts/lib/dataset.js`.
+**Por qué (importante para la Etapa 5):** el motor no usa la Valoración, usa las
+tres áreas por separado. Y en la Etapa 5 la **matriz de contras (§19.3)** hace
+que la Fuerza Efectiva **dependa del rival** — ahí la Valoración deja de ser
+predictiva **por diseño** (es el objetivo del juego). Si el bucketeo quedara
+atado a la Valoración, la tabla de §33 se rompería en la Etapa 5 y no se podría
+distinguir si falla el motor o la métrica. **La Etapa 5 NO debe cambiar esto por
+inercia.** Hoy las dos coinciden numéricamente (no hay modificadores todavía).
 
-### 3.3. `id` = ID de EA (numérico)
-El `id` es la columna `ID` del dataset (numérico, único, estable). Sigue siendo
-numérico, como venía de la Etapa 0.
+### 3.2. Valores calibrados: D=70, FACTOR_GOL=0.36
+El documento daba D=18 y factor 0.42 como **punto de partida** (lo dice
+explícitamente). Con el pool real la Fuerza Efectiva comprime a un rango ~52–74,
+así que D=18 es demasiado determinista (a Δ15 el favorito ganaba 100%). D=70 abre
+la varianza y factor 0.36 baja los goles a 2.44. Están en `js/config/motor.js`.
 
-### 3.4. `jugadores.js` es `.js`, NUNCA `.json`
-El conversor genera `export const JUGADORES = [...]`. Un `.json` obligaría a
-`fetch()` async y a volver asíncrono todo el arranque, sin ganancia. **Que la
-Etapa siguiente no lo cambie por inercia.**
+### 3.3. `fuerzaEfectiva(equipo, equipoRival)` es el punto de entrada de la Etapa 5
+Hoy devuelve las tres áreas base + `frecuencia:1` y `calidadOcasion:1` (neutros).
+**Acá** la Etapa 5 inserta el modificador de formación, las mentalidades y la
+matriz de contras (§20.5) — por eso `equipoRival` ya está en la firma aunque no
+se use todavía. **No reescribir el motor: solo enriquecer esta función.**
 
-### 3.5. Reset de colección por versión de dataset
-`js/config/dataset.js` tiene `DATASET_VERSION`. Al cargar, `sincronizarDataset()`
-compara con lo guardado; si difiere, resetea colección/equipo/paquetes al estado
-inicial y sella la nueva versión. Solo avisa si el usuario **tenía** datos (a un
-usuario nuevo no se le muestra nada). El "estado inicial" es el de hoy (colección
-vacía + paquetes de bienvenida de `ECONOMIA`); los **5 paquetes de bienvenida
-reales (§13.1) son de la Etapa 6**.
+### 3.4. `js/package.json` con `{"type":"module"}`
+Necesario para correr el motor real desde Node (validar el balance sobre el
+código que se envía, no una copia). No hay npm ni dependencias. `scripts/` no
+tiene package.json, así que los scripts de la Etapa 1 (CommonJS) siguen igual.
 
-### 3.6. Los scripts son CommonJS; el juego es ESM
-`scripts/` es tooling de Node (CommonJS, corre sin config ni npm). `js/` es
-módulos ES para el navegador. Es una separación deliberada.
+### 3.5. Formato de "equipo" que consume el motor
+```
+{ id, arquero, defensores:[4], medios:[3], delanteros:[3] }
+```
+Objetos jugador del modelo §8. El motor calcula las áreas con `formulas.js`.
 
-## 4. Pendientes / diferido
+## 4. Hallazgos del pool real
 
-- `shortName` y `clubId` quedan en `null` (los clubes como catálogo son §55).
-- La rareza `"COMUN"` se guarda sin tilde, tal como el código de §11.2. Es solo
-  el string interno.
-- Las **probabilidades de paquete (§14)** NO se tocaron: la generación de
-  paquetes sigue siendo aleatoria uniforme desde el pool (heredado). El sistema
-  de probabilidades por rareza y los pity (§13, §14) son de la Etapa 6.
+- **+30 de ΔFuerza Efectiva es INALCANZABLE con equipos reales.** El máximo real
+  (mejor XI vs peor XI) es **~22** (fuerzas ~74.5 vs ~52). Por eso el techo del
+  87% se verifica en la banda máxima alcanzable (~20), no en +30. Ningún matchup
+  real supera el 87% (máximo medido 85%).
+- **El motor no tiene sesgo de perfil:** equipos ofensivos, defensivos y
+  equilibrados de igual Fuerza Efectiva ganan a tasas ~iguales (cuota decisiva
+  ~49% en las tres cruzas). No hay que corregir nada de eso.
 
-## 5. Advertencias para la próxima etapa (Etapa 2 — Motor de partido)
+## 5. Pendiente / deuda para la Etapa 5
 
-- La Etapa 2 es el **motor de partido headless**. Regla dura: **prohibido
-  `Math.random()` en el motor** — se usa `mulberry32` con semilla (§23). (El
-  `Math.random()` que hay en la generación de paquetes NO es del motor y queda
-  como está hasta la Etapa 6.)
-- El histograma ya validó §11 y §14 en cuanto a distribución del pool. Las
-  probabilidades de paquete de §14 se validan por **simulación** (§33) recién
-  cuando exista el motor.
-- `detailedPosition` está disponible en cada jugador si el motor quisiera
-  distinguir perfiles, pero el motor de §22–§26 trabaja con las **4 categorías**.
-- Para regenerar el plantel: dejar el CSV en `data-raw/` y correr
-  `node scripts/convertir-dataset.js` (ver README). El CSV no está versionado.
+- **Empates a dif-0 (27.6%) y 5+ goles (8.8%) no cumplen §33.** Están acoplados
+  por el conteo de goles y tiran en direcciones opuestas: bajar empates pide más
+  goles, lo que infla el "5+". Con **solo D y FACTOR_GOL** (las perillas de esta
+  etapa) no se pueden cumplir las dos a la vez — se barrió toda la grilla. Se
+  difieren a la Etapa 5, donde las **mentalidades ajustan la cantidad de
+  posesiones (§24)** y aparece un tercer grado de libertad para separar la tasa
+  de empate de la varianza del "5+". (27% de empates entre equipos idénticos es
+  normal en fútbol real; el objetivo 18-22% de §33 es exigente para dif-0.)
 
-## 6. Cómo testear que esta etapa quedó bien
+## 6. Advertencias para la próxima etapa (Etapa 3 — Rival IA y pantalla)
 
-1. `node scripts/analizar-pool.js` corre y muestra los números (869 / 30 clubes
-   / 88 arqueros / las 5 rarezas pobladas).
-2. Servir el juego y abrir paquetes: salen **jugadores reales** (nombres y
-   clubes de la Liga Profesional) con su rareza.
-3. Un usuario que venía de la V0.3 ve el aviso de reset y su colección arranca
-   vacía; un usuario nuevo no ve ningún aviso.
-4. Recargar no vuelve a mostrar el aviso ni pierde datos.
+- El motor ya está listo y **headless**. La Etapa 3 lo engancha a la UI:
+  construir el objeto `equipo` (§3.5) desde el estado del jugador y llamar
+  `simularPartido(equipoA, equipoB, semilla)`.
+- **Generar la semilla del partido y guardarla** (§53.1): un partido se
+  re-verifica desde `{ semilla, equipoA, equipoB }`.
+- El rival IA (§31) y sus nombres ficticios (nunca clubes reales) son de la
+  Etapa 3. El relato (§28) es Etapa 4. Nada de eso se tocó acá.
+- No cambiar `js/data/jugadores.js` a `.json` (sigue siendo `.js`).
 
-Verificado con Chromium: reset + aviso para usuario viejo, sin aviso para nuevo,
-paquetes con datos reales, sin errores de consola.
+## 7. Cómo testear que esta etapa quedó bien
+
+1. `node scripts/simular-balance.mjs` corre, imprime la tabla ANTES (D=18/0.42),
+   el barrido de calibración, la tabla DESPUÉS (D=70/0.36), el análisis de
+   perfiles y los tests de reproducibilidad.
+2. "misma semilla → idéntico" y "semilla distinta → distinto" dan ✓.
+3. El techo del 87% se respeta (máx 85%).
+4. El juego en el navegador sigue funcionando igual (el motor todavía no está
+   enganchado a la UI; eso es Etapa 3).
