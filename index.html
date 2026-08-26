@@ -42,12 +42,20 @@
 
         <div class="user-info">
 
+            <span id="fichasCount" class="header-fichas">
+                🪙 0 Fichas
+            </span>
+
+            <span id="puntosCount" class="header-puntos">
+                ⭐ 0/50
+            </span>
+
             <span id="collectionCount">
                 0 jugadores · 0 figuritas
             </span>
 
             <span id="packCount">
-                5 paquetes
+                0 paquetes
             </span>
 
         </div>
@@ -114,11 +122,18 @@
                 </p>
 
 
+                <!-- =========================
+                     INVENTARIO DE SOBRES (§13, §15.5)
+                ========================== -->
+
+                <div id="packInventory" class="pack-inventory"></div>
+
+
                 <button
-                    id="openPackButton"
-                    class="main-button"
+                    id="tiendaButton"
+                    class="secondary-button hero-secondary-button"
                 >
-                    ABRIR PAQUETE
+                    🛒 TIENDA DE PAQUETES
                 </button>
 
 
@@ -140,6 +155,7 @@
 
                 <p class="pack-info">
                     Cada paquete contiene 6 jugadores.
+                    Los partidos vs IA dan Fichas, nunca sobres ni puntos.
                 </p>
 
             </div>
@@ -182,6 +198,9 @@
             </div>
 
 
+            <div id="packAvisos"></div>
+
+
             <div
                 id="packCards"
                 class="cards-grid"
@@ -194,6 +213,52 @@
             >
                 CONTINUAR
             </button>
+
+        </section>
+
+
+
+        <!-- =====================================
+             TIENDA (§15.5)
+        ====================================== -->
+
+        <section
+            id="tiendaScreen"
+            class="screen"
+        >
+
+            <div class="section-header">
+
+                <button
+                    id="backFromTienda"
+                    class="back-button"
+                >
+                    ← Volver
+                </button>
+
+
+                <div>
+
+                    <span class="eyebrow">
+                        TIENDA
+                    </span>
+
+                    <h2>
+                        PAQUETES POR FICHAS
+                    </h2>
+
+                </div>
+
+            </div>
+
+
+            <p class="tienda-saldo">
+                Tenés <strong id="tiendaFichas">0</strong> Fichas.
+                Ganás Fichas jugando (incluso vs IA) y vendiendo repetidos.
+            </p>
+
+
+            <div id="tiendaContenido" class="tienda-grid"></div>
 
         </section>
 
@@ -928,6 +993,20 @@
 
                 <small>
                     Colección
+                </small>
+
+            </button>
+
+
+            <button
+                class="nav-button"
+                data-screen="tiendaScreen"
+            >
+
+                <span>🛒</span>
+
+                <small>
+                    Tienda
                 </small>
 
             </button>

@@ -5,12 +5,16 @@
 import {
     estado,
     getTotalCards,
-    getTeamPlayerCount
+    getTeamPlayerCount,
+    getTotalPaquetes
 } from "../core/estado.js";
+import { ECONOMIA } from "../config/economia.js";
 
 import { renderCollection } from "./coleccion.js";
 import { renderTeam } from "./equipo.js";
 import { renderCompetir, renderHistorial } from "./partido.js";
+import { renderInventario } from "./paquetes.js";
+import { renderTienda } from "./tienda.js";
 
 
 // ==========================================
@@ -18,6 +22,8 @@ import { renderCompetir, renderHistorial } from "./partido.js";
 // ==========================================
 
 const packCountElement       = document.getElementById("packCount");
+const fichasCountElement      = document.getElementById("fichasCount");
+const puntosCountElement      = document.getElementById("puntosCount");
 const collectionCountElement = document.getElementById("collectionCount");
 const uniquePlayersElement   = document.getElementById("uniquePlayers");
 const totalFiguritasElement  = document.getElementById("totalFiguritas");
@@ -62,6 +68,14 @@ export function showScreen(screenId) {
     if (screenId === "historialScreen") {
         renderHistorial();
     }
+
+    if (screenId === "homeScreen") {
+        renderInventario();
+    }
+
+    if (screenId === "tiendaScreen") {
+        renderTienda();
+    }
 }
 
 
@@ -75,7 +89,10 @@ export function updateHeader() {
     collectionCountElement.textContent =
         `${estado.collection.length} jugadores · ${totalCards} figuritas`;
 
-    packCountElement.textContent = `${estado.packs} paquetes`;
+    packCountElement.textContent = `${getTotalPaquetes()} paquetes`;
+
+    fichasCountElement.textContent = `🪙 ${estado.usuario.monedas.fichas} Fichas`;
+    puntosCountElement.textContent = `⭐ ${estado.usuario.puntosAcumulados}/${ECONOMIA.puntosParaPack}`;
 
     uniquePlayersElement.textContent = estado.collection.length;
 
