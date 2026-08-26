@@ -45,18 +45,23 @@ const idsXI = e => [e.arquero.id, ...e.defensores.map(j => j.id), ...e.medios.ma
 
 
 // ------------------------------------------
-// 1) % de victoria por dificultad (50 c/u)
+// 1) % de victoria por dificultad
 // ------------------------------------------
-console.log("\n1) % DE VICTORIA DEL USUARIO POR DIFICULTAD (50 partidos, XI nivel 70)");
+// N alto: desde la Etapa 5 el rival juega formación + mentalidad ALEATORIAS y el
+// usuario de prueba usa la mentalidad neutra, así que cada partido tiene más
+// varianza táctica. Con 50 muestras las aserciones flojas (monotonía, gana>pierde)
+// eran flakeables; con 200 los % se estabilizan.
+const N_POR_DIF = 200;
+console.log(`\n1) % DE VICTORIA DEL USUARIO POR DIFICULTAD (${N_POR_DIF} partidos, XI nivel 70)`);
 const resultadosPorDif = {};
 for (const dif of DIFICULTADES) {
     let v = 0, e = 0, d = 0;
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < N_POR_DIF; i++) {
         const reg = jugarPartido(equipoUsuario(70), dif);
         if (reg.resultado === "V") v++; else if (reg.resultado === "E") e++; else d++;
     }
     resultadosPorDif[dif] = { v, e, d };
-    console.log(`  ${dif.padEnd(7)} → V ${v}  E ${e}  D ${d}   (victorias ${(100 * v / 50).toFixed(0)}%)`);
+    console.log(`  ${dif.padEnd(7)} → V ${v}  E ${e}  D ${d}   (victorias ${(100 * v / N_POR_DIF).toFixed(0)}%)`);
 }
 ok(resultadosPorDif.FACIL.v > resultadosPorDif.FACIL.d, "FÁCIL: ganás más de lo que perdés");
 ok(resultadosPorDif.ELITE.d > resultadosPorDif.ELITE.v, "ÉLITE: perdés más de lo que ganás");

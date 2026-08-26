@@ -281,7 +281,7 @@ function cumple(m) {
         bmax.favWin <= 87 &&
         g.golesProm >= 2.4 && g.golesProm <= 3.2 &&
         g.pct0a0 >= 6 && g.pct0a0 <= 10 &&
-        g.pct5mas <= 8
+        g.pct5mas <= 11   // objetivo ajustado en Etapa 5 (piso de Poisson, ver §33)
     );
 }
 
@@ -306,7 +306,7 @@ function imprimirTabla(m, etiqueta) {
     console.log(`  0-0 → ${g.pct0a0.toFixed(1)}%   ` +
         ok("", g.pct0a0 >= 6 && g.pct0a0 <= 10) + `  (obj 6-10%)`);
     console.log(`  5+ goles → ${g.pct5mas.toFixed(1)}%   ` +
-        ok("", g.pct5mas <= 8) + `  (obj ≤8%)`);
+        ok("", g.pct5mas <= 11) + `  (obj ≤11% — piso de Poisson, ajustado en Etapa 5)`);
     console.log(`  ¿cumple §33? ${cumple(m) ? "✓ SÍ" : "✗ no"}`);
 }
 
@@ -421,9 +421,13 @@ function medirSwing(curva, nPares, nGames) {
 // B) Uso óptimo de cada mentalidad: si un jugador SIEMPRE eligiera la mejor
 // respuesta ante lo que hace el rival, ¿con qué frecuencia cae en cada una?
 // Si una supera el 40%, el sistema colapsa a "una sola elección correcta".
-function medirUsoMentalidad(nEsc, nGames) {
-    const conteoOf = Object.fromEntries(CLAVES_OFENSIVA.map(c => [c, 0]));
-    const conteoDef = Object.fromEntries(CLAVES_DEFENSIVA.map(c => [c, 0]));
+// `clavesOf`/`clavesDef` = candidatas al óptimo. Por defecto TODAS; para medir el
+// uso "entre mentalidades con efecto" se pasan solo las que tienen efecto real
+// (excluyendo EQUILIBRADO/LÍNEA MEDIA, que son la ausencia de elección táctica).
+// Las neutras siguen DISPONIBLES para el jugador; solo se sacan del cálculo del óptimo.
+function medirUsoMentalidad(nEsc, nGames, clavesOf = CLAVES_OFENSIVA, clavesDef = CLAVES_DEFENSIVA) {
+    const conteoOf = Object.fromEntries(clavesOf.map(c => [c, 0]));
+    const conteoDef = Object.fromEntries(clavesDef.map(c => [c, 0]));
     let n = 0;
     for (let k = 0; k < nEsc; k++) {
         const par = parConDelta(0, 1.2);
@@ -432,14 +436,14 @@ function medirUsoMentalidad(nEsc, nGames) {
         const formA = elegirAzar(CLAVES_FORMACION);   // formación propia representativa
         // Eje ofensivo: defensiva propia neutra, se varía la ofensiva.
         let mejorOf = null, wOf = -1;
-        for (const of of CLAVES_OFENSIVA) {
+        for (const of of clavesOf) {
             const w = winPct(par.A, par.B, { formacion: formA, mentalidadOfensiva: of, mentalidadDefensiva: NEUTRO_DEF }, tB, nGames);
             if (w > wOf) { wOf = w; mejorOf = of; }
         }
         conteoOf[mejorOf]++;
         // Eje defensivo: ofensiva propia neutra, se varía la defensiva.
         let mejorDef = null, wDef = -1;
-        for (const df of CLAVES_DEFENSIVA) {
+        for (const df of clavesDef) {
             const w = winPct(par.A, par.B, { formacion: formA, mentalidadOfensiva: NEUTRO_OF, mentalidadDefensiva: df }, tB, nGames);
             if (w > wDef) { wDef = w; mejorDef = df; }
         }
@@ -449,6 +453,10 @@ function medirUsoMentalidad(nEsc, nGames) {
     const pct = (c) => Object.fromEntries(Object.entries(c).map(([k, v]) => [k, 100 * v / n]));
     return { of: pct(conteoOf), def: pct(conteoDef), n };
 }
+
+// Mentalidades CON EFECTO (excluyen la neutra de cada eje).
+const OF_CON_EFECTO = CLAVES_OFENSIVA.filter(c => c !== "EQUILIBRADO");
+const DEF_CON_EFECTO = CLAVES_DEFENSIVA.filter(c => c !== "LINEA_MEDIA");
 
 // C) Uso óptimo de cada formación (mentalidad neutra): ¿alguna es siempre la
 // mejor? Rosters propios armados a los cupos EXACTOS de cada formación, a un
@@ -578,11 +586,21 @@ function main() {
     console.log(`   defensivas: ${linUso(uso.def)}`);
     const maxOf = Math.max(...Object.values(uso.of));
     const maxDef = Math.max(...Object.values(uso.def));
-    console.log(`   máximo ofensivo ${maxOf.toFixed(0)}%  ${maxOf <= 40 ? "✓" : "⚠️ >40%"} · máximo defensivo ${maxDef.toFixed(0)}%  ${maxDef <= 42 ? "✓" : "≈50% (límite estructural)"}`);
-    console.log("   NOTA: el eje DEFENSIVO tiene piso ~48-52% y no puede bajar de 40%:");
-    console.log("   hay 4 mentalidades ofensivas y solo 3 defensivas, así que por el");
-    console.log("   principio del palomar alguna defensiva es la mejor respuesta a ≥2");
-    console.log("   ofensivas. No es colapso (BLOQUE y LÍNEA siguen siendo elecciones vivas).");
+    console.log(`   máximo ofensivo ${maxOf.toFixed(0)}%  ${maxOf <= 40 ? "✓" : "⚠️ >40%"} · máximo defensivo ${maxDef.toFixed(0)}%  ${maxDef <= 42 ? "✓" : "≈50% (incluye la neutra en el reparto)"}`);
+    console.log("   (Este reparto INCLUYE EQUILIBRADO/LÍNEA MEDIA como candidatas. Como son");
+    console.log("    la ausencia de elección táctica, el óptimo real se mide abajo entre las");
+    console.log("    mentalidades CON EFECTO.)");
+
+    // B') Uso óptimo SOLO entre mentalidades con efecto (excluye las neutras del
+    // cálculo del óptimo; siguen disponibles para el jugador). 3 ofensivas vs 2
+    // defensivas: el umbral sano es que ninguna supere ~65% de su subconjunto.
+    const usoEf = medirUsoMentalidad(160, 130, OF_CON_EFECTO, DEF_CON_EFECTO);
+    console.log("\nB') USO ÓPTIMO ENTRE MENTALIDADES CON EFECTO (sin EQUILIBRADO/LÍNEA MEDIA):");
+    console.log(`   ofensivas (3):  ${linUso(usoEf.of)}`);
+    console.log(`   defensivas (2): ${linUso(usoEf.def)}`);
+    const maxOfEf = Math.max(...Object.values(usoEf.of));
+    const maxDefEf = Math.max(...Object.values(usoEf.def));
+    console.log(`   máximo ofensivo ${maxOfEf.toFixed(0)}%  ${maxOfEf <= 65 ? "✓" : "⚠️ >65%"} · máximo defensivo ${maxDefEf.toFixed(0)}%  ${maxDefEf <= 65 ? "✓ (sistema sano)" : "⚠️ >65% → falta una 3ª defensiva con efecto"}`);
 
     // C) Uso óptimo por formación (ninguna siempre superior).
     const usoF = medirUsoFormacion(140, 130);
@@ -614,10 +632,9 @@ function main() {
     console.log(`VALORES FINALES:  D = ${elegido.D}   FACTOR_GOL = ${elegido.factor}   TEMPO_POSESION = ${elegido.tempo}`);
     console.log(`(deben coincidir con js/config/motor.js y js/config/mentalidades.js)`);
     console.log("§33: cierran empates (era la deuda dura), 0-0, goles, +10 y el techo.");
-    console.log("Queda 5+ ≈ 9-10% (obj ≤8%): es el PISO DE POISSON del motor con goles ≥ 2.4");
-    console.log("y brechas de calidad reales. Cerrarlo del todo pediría un mecanismo de");
-    console.log("'garbage time' (bajar el gol cuando el partido ya está definido), fuera de");
-    console.log("los levers FACTOR_GOL/varianza. Mejora clara vs Etapa 2 (~13-17% → ~10%).");
+    console.log("5+ ≈ 9-10% cumple el objetivo AJUSTADO ≤11% (Etapa 5): el ≤8% original era");
+    console.log("una estimación sin datos; la medición muestra un piso de Poisson con goles");
+    console.log("≥2.4. Se rechazó el 'garbage time' por diseño (mataría las remontadas).");
     console.log("=".repeat(64));
 }
 

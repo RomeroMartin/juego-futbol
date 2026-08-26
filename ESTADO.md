@@ -106,7 +106,9 @@ Valores finales (`js/config/motor.js` y `mentalidades.js`):
 | dif máx → fav | ≤87% | ~82% | ✓ |
 | goles/partido | 2.4–3.2 | ~2.48 | ✓ |
 | 0-0 | 6–10% | ~7.7% | ✓ |
-| **5+ goles** | **≤8%** | **~10%** | **✗ (ver abajo)** |
+| **5+ goles** | **≤11%** (ajustado, ver §5) | **~10%** | **✓** |
+
+**§33 cumple 8/8** con el objetivo de 5+ ajustado a ≤11% (decisión del creador, §5).
 
 **Mediciones tácticas (secciones A–D del script):**
 - **Swing táctico ~±10 pts de FE** (correcta +9 / incorrecta −11). El objetivo de
@@ -115,6 +117,9 @@ Valores finales (`js/config/motor.js` y `mentalidades.js`):
   priorizó el reparto de uso.
 - **Uso óptimo OFENSIVO ≤40% ✓** (RÁPIDO ~38 / ABIERTO ~39 / POSESIÓN ~22 / EQUILIBRADO ~2).
 - **Uso óptimo por FORMACIÓN ≤40% ✓** (máximo ~31%).
+- **Uso óptimo ENTRE MENTALIDADES CON EFECTO (sección B', sin las neutras): sistema
+  sano.** Ofensivas (3): RÁPIDO ~36 / ABIERTO ~38 / POSESIÓN ~27. Defensivas (2):
+  BLOQUE ~38 / PRESIÓN ~63. Ninguna supera el ~65% de su subconjunto (ver §5).
 - **Remontada:** equipo 10 puntos inferior con la mentalidad correcta gana **~42%**
   (vs ~17% neutra). Sí puede ganar.
 
@@ -133,23 +138,32 @@ el ruido táctico (±10) tapa la señal de calidad y rompe el +10.
 - `VARIANZA_OCASION_MIN/SPAN`: banda de calidad de la ocasión (antes hardcodeada
   0.8+0.4 en el motor), angostada a 0.95+0.1.
 
-## 5. Pendientes conocidos / límites estructurales (LEER)
+## 5. Decisiones de balance cerradas con el creador (LEER)
 
-- **`5+ goles ~10%` (obj ≤8%): PISO DE POISSON del motor.** Con goles ≥2.4 y
-  brechas de calidad reales, la cola de 5+ no baja de ~9-10% (es la cola superior
-  de una distribución ~Poisson). Cerrarlo del todo pediría un mecanismo de
-  **"garbage time"** (bajar la probabilidad de gol cuando el partido ya está
-  definido), que está **fuera de los levers FACTOR_GOL/varianza** acordados. Es
-  una mejora clara vs Etapa 2 (~13-17% → ~10%) y la deuda dura (empates) sí
-  cerró. **Decisión pendiente del creador:** aceptar ~10% o autorizar el garbage
-  time.
-- **Uso óptimo DEFENSIVO ~49% (obj ≤40%): LÍMITE ESTRUCTURAL, no bug.** Hay **4
-  mentalidades ofensivas y solo 3 defensivas** (§19.1/§19.2). Por el principio del
-  palomar, alguna defensiva es la mejor respuesta a ≥2 ofensivas → su uso óptimo
-  tiene piso ~48-52%. Bajarlo a la fuerza vuelve a PRESIÓN ALTA un "trap"
-  degenerado (peor diseño). **NO es colapso**: BLOQUE (~35%) y LÍNEA (~16%) siguen
-  siendo elecciones vivas. **Decisión pendiente del creador:** aceptar ~50% como
-  estructural, o agregar una 4ª mentalidad defensiva (cambia §19.2).
+- **`5+ goles ~10%`: objetivo de §33 ajustado de ≤8% a ≤11% (RESUELTO).** El ≤8%
+  era una estimación sin datos. La medición muestra que, con goles ≥2.4 y brechas
+  de calidad reales, la cola de 5+ es un **piso de Poisson ~9-10%** que
+  FACTOR_GOL/varianza no bajan. El número equivocado era el objetivo, no el motor
+  (mejora clara vs Etapa 2 ~13-17%). Se **rechazó el "garbage time" por diseño**
+  (no por falta de tiempo): apagar el gol cuando el partido "ya está definido"
+  mataría las remontadas, que son justo los partidos de los que se habla en el
+  grupo. Doc maestro §33 actualizado.
+- **Uso óptimo defensivo: sistema SANO, era un error de medición (RESUELTO).**
+  EQUILIBRADO (ofensiva) y LÍNEA MEDIA (defensiva) son la MISMA cosa: la ausencia
+  de elección táctica. Contadas como una mentalidad más inflaban el reparto (daban
+  el falso ~50% defensivo). El óptimo REAL se mide entre las mentalidades **con
+  efecto** (3 ofensivas: RÁPIDO/ABIERTO/POSESIÓN; 2 defensivas: BLOQUE/PRESIÓN).
+  Con ese recorte (sección B' del script): ofensivas máx ~38%, defensivas
+  BLOQUE ~38% / **PRESIÓN ~63%**, por **debajo del umbral ~65%** → sano. Las
+  neutras siguen DISPONIBLES para el jugador; solo se excluyen del cálculo del
+  óptimo. **No se agregó una 4ª mentalidad.** (Si a futuro PRESIÓN superara el
+  65%, la propuesta en carpeta es una defensiva "MARCA PERSONAL / REPLIEGUE
+  ORDENADO": +10 def vs ataques rápidos/contras, −8 medio, fuerte vs EQUIPO RÁPIDO
+  ×1.12, débil vs POSESIÓN ×0.90 — cubre el hueco de que hoy nada castiga
+  específicamente al EQUIPO RÁPIDO.)
+
+## Pendientes conocidos (no son de esta etapa)
+
 - **Faltas/tarjetas de PRESIÓN ALTA**: son eventos V1.5 (§27), fuera de esta etapa.
 - **§17.3 (congelar formación/XI en torneos)**: es de la Etapa 9. Punto de entrada
   dejado preparado y comentado en `ui/equipo.js` (los campos ya están separados).
