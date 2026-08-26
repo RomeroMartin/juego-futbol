@@ -2322,3 +2322,195 @@ main {
         grid-template-columns: 1fr;
     }
 }
+
+
+/* =====================================
+   ECONOMÍA (Etapa 6)
+===================================== */
+
+/* Header: Fichas y puntos */
+.header-fichas {
+    color: #ffd45e;
+    font-weight: 600;
+}
+.header-puntos {
+    color: var(--green);
+    font-weight: 600;
+}
+
+/* Inventario de sobres en el home */
+.pack-inventory {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    max-width: 460px;
+    margin: 0 auto 20px;
+}
+.pack-inv-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px 14px;
+    text-align: left;
+}
+.pack-inv-row.sin-stock {
+    opacity: 0.5;
+}
+.pack-inv-icono {
+    font-size: 26px;
+    line-height: 1;
+}
+.pack-inv-datos {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.pack-inv-datos strong {
+    font-size: 14px;
+}
+.pack-inv-datos small {
+    color: var(--muted);
+    font-size: 12px;
+}
+.pack-inv-cant {
+    color: var(--green);
+}
+.pack-pos-select {
+    background: var(--surface-light);
+    color: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 8px;
+    font-size: 13px;
+}
+.pack-inv-abrir {
+    width: auto;
+    padding: 10px 18px;
+    margin: 0;
+    font-size: 13px;
+}
+.pack-inventory-vacio {
+    color: var(--muted);
+    font-size: 14px;
+    max-width: 420px;
+    margin: 0 auto 16px;
+}
+
+/* Avisos de garantía en el revelado del paquete */
+.pack-avisos {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 620px;
+    margin: 0 auto 16px;
+}
+.pack-avisos p {
+    background: var(--surface-light);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--green);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--white);
+}
+
+/* Tienda */
+.tienda-saldo {
+    text-align: center;
+    color: var(--muted);
+    font-size: 14px;
+    margin: 0 auto 20px;
+    max-width: 560px;
+}
+.tienda-saldo strong {
+    color: #ffd45e;
+}
+.tienda-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    max-width: 760px;
+    margin: 0 auto;
+}
+.tienda-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px 16px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.tienda-icono {
+    font-size: 40px;
+}
+.tienda-card h3 {
+    font-size: 16px;
+    margin: 4px 0;
+}
+.tienda-contenido {
+    color: var(--muted);
+    font-size: 13px;
+    flex: 1;
+}
+.tienda-precio {
+    color: #ffd45e;
+    font-weight: 700;
+    font-size: 16px;
+}
+.tienda-inventario {
+    color: var(--muted);
+    font-size: 12px;
+}
+.tienda-comprar {
+    margin: 8px 0 0;
+}
+
+/* Botón vender en la colección */
+.card-sell {
+    width: 100%;
+    margin-top: 8px;
+    padding: 8px;
+    background: var(--surface-light);
+    color: #ffd45e;
+    border: 1px solid rgba(255,212,94,0.4);
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.card-sell:hover {
+    background: rgba(255,212,94,0.15);
+}
+
+/* Fichas ganadas en el resultado del partido */
+.resultado-fichas {
+    background: var(--surface-light);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin: 16px 0;
+    text-align: center;
+}
+.resultado-fichas strong {
+    color: #ffd45e;
+    font-size: 16px;
+}
+.resultado-fichas .fichas-bonus {
+    color: var(--green);
+    font-size: 13px;
+    margin-left: 6px;
+}
+.resultado-fichas small {
+    display: block;
+    color: var(--muted);
+    font-size: 12px;
+    margin-top: 4px;
+}

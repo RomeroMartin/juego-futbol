@@ -3,20 +3,22 @@
 // ==========================================
 
 import { estado } from "../core/estado.js";
-import { agregarAlHistorial, cargarHistorial } from "../core/storage.js";
+import { agregarAlHistorial, cargarHistorial, guardarPartida } from "../core/storage.js";
+import { registrarResultadoEconomia, fechaHoy } from "../core/economia.js";
 import { calcularValoracion } from "../core/formulas.js";
 import { OFFSET_DIFICULTAD } from "../core/rivalIA.js";
 import { prepararPartido, resolverPartido } from "../core/partido.js";
 import { generarRelato } from "../core/relato.js";
 import { slotsDeFormacion } from "../config/formaciones.js";
 import { MENTALIDADES_OF, MENTALIDADES_DEF, MATRIZ_CONTRAS } from "../config/mentalidades.js";
-import { showScreen } from "./navegacion.js";
+import { showScreen, updateHeader } from "./navegacion.js";
 
 
 // Estado del flujo de partido.
 let partidoPreparado = null;
 let ultimaDificultad = null;
 let ultimoRegistro = null;
+let ultimoEco = null;         // resultado económico del último partido (Fichas)
 let relatoTimer = null;
 
 
@@ -177,8 +179,19 @@ function comenzarPartido() {
 
     const registro = resolverPartido(partidoPreparado);
     agregarAlHistorial(registro);
+
+    // 🔴 §15.0/§15.3: los partidos vs IA otorgan FICHAS (§15.4) pero NUNCA sobres
+    // ni puntos. registrarResultadoEconomia lo garantiza (tipo "IA" → 0 puntos).
+    const eco = registrarResultadoEconomia(estado.usuario, "IA", registro.resultado, fechaHoy());
+    if (eco.packsPremiumOtorgados > 0) {
+        estado.paquetes.PREMIUM += eco.packsPremiumOtorgados;   // no ocurre vs IA (0 puntos)
+    }
+    guardarPartida(estado);
+    updateHeader();
+
     ultimaDificultad = registro.dificultad;
     ultimoRegistro = registro;
+    ultimoEco = eco;
 
     // Relato progresivo antes del resultado.
     reproducirRelato(generarRelato(registro));
@@ -306,6 +319,19 @@ function bloqueTactico(reg) {
 }
 
 
+// Fichas ganadas en el partido (§15.4). Los partidos vs IA NO suman puntos, así
+// que se aclara explícitamente para que la separación de la economía sea visible.
+function bloqueFichas(eco) {
+    if (!eco) return "";
+    return `
+        <div class="resultado-fichas">
+            🪙 <strong>+${eco.fichas} Fichas</strong>
+            ${eco.primeroDelDia ? `<span class="fichas-bonus">(incluye +50 por primer partido del día)</span>` : ""}
+            <small>Los partidos vs IA no suman puntos ni sobres (§15.3).</small>
+        </div>
+    `;
+}
+
 export function renderResultado(reg) {
     const cont = document.getElementById("resultadoContenido");
     const r = ETIQUETA_RESULTADO[reg.resultado];
@@ -333,6 +359,8 @@ export function renderResultado(reg) {
             <div class="stat-fila"><span>${est.llegadasUsuario}</span><span>Llegadas al arco</span><span>${est.llegadasRival}</span></div>
             <div class="stat-fila"><span>${reg.golesUsuario}</span><span>Goles</span><span>${reg.golesRival}</span></div>
         </div>
+
+        ${bloqueFichas(ultimoEco)}
 
         ${bloqueTactico(reg)}
 

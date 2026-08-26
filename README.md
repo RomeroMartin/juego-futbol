@@ -74,25 +74,29 @@ css/estilos.css       Estilos
 js/
   main.js             Enganche de eventos y arranque
   config/
-    economia.js       Valores de economía y balance (§15.7)
+    economia.js       Valores de economía y balance (§13, §14, §15.7)
     formaciones.js    Formaciones como dato (§17)
     dataset.js        Versión del plantel activo (para el reset de colección)
   data/
     jugadores.js      Plantel real, GENERADO (modelo de §8, rareza §11.2)
   core/
-    estado.js         Estado en memoria de la partida
-    storage.js        Persistencia en localStorage + migración (§52) + reset de dataset
+    estado.js         Estado en memoria de la partida (usuario, inventario, colección)
+    storage.js        Persistencia en localStorage + migración (§52, §44) + reset de dataset
+    economia.js       Economía pura y testeable (paquetes, pity, Fichas, puntos, tienda)
     calculos.js       Fórmulas de stats de equipo (§20)
   ui/
     componentes.js    Carta de jugador y helpers de UI
     navegacion.js     Cambio de pantalla y header
-    paquetes.js       Apertura y render de paquetes
-    coleccion.js      Vista de colección
+    paquetes.js       Inventario, apertura y render de paquetes
+    tienda.js         Tienda de paquetes por Fichas (§15.5)
+    coleccion.js      Vista de colección + venta de repetidos
     equipo.js         Constructor del XI
 scripts/
   lib/dataset.js      Lógica compartida (parseo CSV, mapeo de posiciones, rareza)
   analizar-pool.js    Análisis del pool (histograma, rareza) — no es del juego
   convertir-dataset.js Genera js/data/jugadores.js desde el CSV — no es del juego
+  test-economia.mjs   Tests headless de la economía (§13, §14, §15)
+  test-*.mjs          Otros tests headless por consola (motor, rival IA, relato)
 data-raw/             CSV crudo (NO versionado, ver arriba)
 
 docs/                 Documento maestro y plan de etapas

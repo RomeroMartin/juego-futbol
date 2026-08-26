@@ -6,7 +6,6 @@
 // guardada pasa por migrar() antes de usarse (§52), para que partidas viejas
 // no se rompan al cambiar el modelo de datos.
 
-import { ECONOMIA } from "../config/economia.js";
 import { DATASET_VERSION } from "../config/dataset.js";
 import {
     FORMACION_DEFAULT,
@@ -20,12 +19,18 @@ import {
     MENTALIDADES_OF,
     MENTALIDADES_DEF
 } from "../config/mentalidades.js";
+import {
+    usuarioNuevo,
+    inventarioNuevo,
+    SCHEMA_USUARIO
+} from "./economia.js";
 
 const CLAVE_COLECCION = "futbolFiguritasCollection";
-const CLAVE_PAQUETES  = "futbolFiguritasPacks";
+const CLAVE_PAQUETES  = "futbolFiguritasPacks";     // Etapa 6: inventario por tipo (antes: número)
 const CLAVE_EQUIPO    = "futbolFiguritasTeam";
 const CLAVE_DATASET   = "futbolFiguritasDatasetVersion";
 const CLAVE_HISTORIAL = "futbolFiguritasHistorial";
+const CLAVE_USUARIO   = "futbolFiguritasUsuario";   // Etapa 6: modelo de usuario (§44)
 
 // Máximo de partidos guardados en el historial (se recorta el más viejo).
 const MAX_HISTORIAL = 50;
@@ -133,11 +138,13 @@ export function sincronizarDataset() {
         localStorage.getItem(CLAVE_EQUIPO) !== null;
 
     // Reset al estado inicial. También el historial: sus partidos referencian
-    // ids de jugadores que ya no existen en el plantel nuevo.
+    // ids de jugadores que ya no existen en el plantel nuevo. Y el usuario:
+    // colección, fichas y pity vuelven al estado de un usuario nuevo.
     localStorage.removeItem(CLAVE_COLECCION);
     localStorage.removeItem(CLAVE_EQUIPO);
     localStorage.removeItem(CLAVE_PAQUETES);
     localStorage.removeItem(CLAVE_HISTORIAL);
+    localStorage.removeItem(CLAVE_USUARIO);
     localStorage.setItem(CLAVE_DATASET, DATASET_VERSION);
 
     return teniaDatos;
@@ -247,15 +254,51 @@ export function cargarColeccion() {
 }
 
 
-export function cargarPaquetes() {
+// Inventario de paquetes por tipo { BASICO, PREMIUM, POSICIONAL }.
+//
+// Migración: hasta la Etapa 5 esta clave guardaba un NÚMERO plano (la cuenta de
+// paquetes, todos estándar). Ese número se envuelve como BASICO. La acreditación
+// de los 5 paquetes de bienvenida la hace estado.js con reclamarBienvenida...().
+export function cargarInventario() {
     const guardado = localStorage.getItem(CLAVE_PAQUETES);
+    if (guardado === null) return inventarioNuevo();
 
-    // Si no hay nada guardado, arranca con los paquetes de bienvenida (§15.1).
-    if (guardado === null) {
-        return ECONOMIA.paquetesBienvenida;
+    const parsed = JSON.parse(guardado);
+    if (typeof parsed === "number") {
+        return { ...inventarioNuevo(), BASICO: parsed };
+    }
+    return { ...inventarioNuevo(), ...parsed };
+}
+
+
+// Modelo de usuario (§44), migrando saldos parciales al modelo completo.
+export function cargarUsuario() {
+    const guardado = JSON.parse(localStorage.getItem(CLAVE_USUARIO));
+
+    if (guardado) {
+        return migrarUsuario(guardado);
     }
 
-    return Number(guardado) || 0;
+    // No hay usuario guardado. Si YA había paquetes guardados (número o objeto),
+    // es un usuario pre-Etapa 6 que ya recibió su bienvenida en el flujo viejo:
+    // no se le re-otorgan los 5 ni el paquete especial garantizado.
+    const usuario = usuarioNuevo();
+    if (localStorage.getItem(CLAVE_PAQUETES) !== null) {
+        usuario.paquetesBienvenidaReclamados = true;
+        usuario.primerPaqueteEspecialPendiente = false;
+    }
+    return usuario;
+}
+
+
+// Completa un usuario guardado con los campos §44 que falten (saldos parciales,
+// campos nuevos), sin pisar los valores existentes.
+function migrarUsuario(guardado) {
+    const base = usuarioNuevo();
+    const u = { ...base, ...guardado };
+    u.monedas = { ...base.monedas, ...(guardado.monedas || {}) };
+    u.schemaVersion = SCHEMA_USUARIO;
+    return u;
 }
 
 
@@ -277,9 +320,15 @@ export function guardarPartida(estado) {
         JSON.stringify(estado.collection)
     );
 
+    // Inventario de paquetes por tipo (§15.5) y modelo de usuario (§44).
     localStorage.setItem(
         CLAVE_PAQUETES,
-        estado.packs.toString()
+        JSON.stringify(estado.paquetes)
+    );
+
+    localStorage.setItem(
+        CLAVE_USUARIO,
+        JSON.stringify(estado.usuario)
     );
 
     // Se persiste el equipo COMPLETO: formación, slots y mentalidades (§17, §19).

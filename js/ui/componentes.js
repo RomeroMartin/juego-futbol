@@ -2,6 +2,8 @@
 // COMPONENTES DE UI COMPARTIDOS
 // ==========================================
 
+import { etiquetaRareza } from "../config/economia.js";
+
 // ==========================================
 // RAREZA (fallback)
 // ==========================================
@@ -24,7 +26,9 @@ export function getRarity(overall) {
         return "ORO";
     }
 
-    return "COMÚN";
+    // Clave canónica SIN tilde (la tilde vive solo en las etiquetas, ver
+    // config/economia.js). Un "COMÚN" con tilde no matchearía en ningún filtro.
+    return "COMUN";
 }
 
 
@@ -70,12 +74,14 @@ export function createPlayerCard(player, showQuantity = true, quantity = 1) {
     card.className = "player-card";
 
     // Rareza precalculada del dataset (§11.2); fallback a umbrales si falta.
+    // La clave canónica es sin tilde ("COMUN"); al usuario se le muestra con tilde.
     const rarity = player.rarity || getRarity(player.overall);
+    card.dataset.rarity = rarity;
 
     card.innerHTML = `
 
-        <span class="card-rarity">
-            ${rarity}
+        <span class="card-rarity" data-rarity="${rarity}">
+            ${etiquetaRareza(rarity)}
         </span>
 
 

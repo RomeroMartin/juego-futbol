@@ -8,7 +8,8 @@
 import { estado, datasetReseteado } from "./core/estado.js";
 import { guardarPartida } from "./core/storage.js";
 import { showScreen, updateHeader } from "./ui/navegacion.js";
-import { generatePack } from "./ui/paquetes.js";
+import { initPaquetes } from "./ui/paquetes.js";
+import { initTienda } from "./ui/tienda.js";
 import { initFiltrosColeccion } from "./ui/coleccion.js";
 import { renderTeam, initFiltrosEquipo, initTacticaEquipo } from "./ui/equipo.js";
 import { initPartido } from "./ui/partido.js";
@@ -44,11 +45,6 @@ document.querySelectorAll(".nav-button").forEach(button => {
 
 
 document
-    .getElementById("openPackButton")
-    .addEventListener("click", generatePack);
-
-
-document
     .getElementById("closePackButton")
     .addEventListener("click", () => {
         estado.currentPack = [];
@@ -81,6 +77,8 @@ document
 // FILTROS
 // ==========================================
 
+initPaquetes();
+initTienda();
 initFiltrosColeccion();
 initFiltrosEquipo();
 initTacticaEquipo();

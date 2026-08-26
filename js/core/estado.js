@@ -8,9 +8,14 @@
 import {
     sincronizarDataset,
     cargarColeccion,
-    cargarPaquetes,
+    cargarInventario,
+    cargarUsuario,
     cargarEquipo
 } from "./storage.js";
+import {
+    reclamarBienvenidaSiCorresponde,
+    totalPaquetes
+} from "./economia.js";
 
 
 // Se corre ANTES de cargar la partida: si el plantel cambió, resetea la
@@ -22,8 +27,15 @@ export const datasetReseteado = sincronizarDataset();
 // El equipo persistido trae formación + mapa de slots + mentalidades (§17, §19).
 const equipoGuardado = cargarEquipo();
 
+// Usuario (§44) e inventario de paquetes por tipo (§15.5). A un usuario nuevo se
+// le acreditan acá los 5 paquetes de bienvenida (§13.1), una sola vez.
+const usuario = cargarUsuario();
+const inventario = cargarInventario();
+reclamarBienvenidaSiCorresponde(usuario, inventario);
+
 export const estado = {
-    packs:               cargarPaquetes(),
+    usuario,                         // modelo §44 (fichas, puntos, pity, bienvenida)
+    paquetes:            inventario, // { BASICO, PREMIUM, POSICIONAL }
     collection:          cargarColeccion(),
     formacion:           equipoGuardado.formacion,
     team:                equipoGuardado.team,
@@ -33,6 +45,15 @@ export const estado = {
     currentFilter:       "all",
     teamPlayerFilter:    "all"
 };
+
+
+// ==========================================
+// TOTAL DE PAQUETES EN EL INVENTARIO
+// ==========================================
+
+export function getTotalPaquetes() {
+    return totalPaquetes(estado.paquetes);
+}
 
 
 // ==========================================
