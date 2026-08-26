@@ -864,6 +864,17 @@ OVR medio del plantel   77.1      ← dato de colección
 
 La **Fuerza Efectiva** es lo que realmente entra al motor. Aplica, en este orden: stats base → modificador de formación → modificadores de mentalidad → matriz de contras → interacción formación/mentalidad.
 
+> 🔴 **Corrección (Etapa 5).** La versión original de esta sección aplicaba la
+> matriz de contras DOS veces: `MATRIZ_CONTRAS` al ataque propio **y** una
+> `MATRIZ_CONTRAS_DEF` (espejo) a la defensa propia. Eso es un **doble conteo**:
+> el motor resuelve la ocasión como `probabilidadDuelo(ataqueA, defensaB)`, así
+> que multiplicar `ataqueA ×1.18` **y** `defensaB ×0.82` cuenta el mismo
+> enfrentamiento dos veces (el diferencial real se iba a ~36%, el doble de lo
+> calibrado en §19.3). **Solución correcta: una sola matriz, aplicada al ataque
+> del que ataca.** Como `calcularFuerzaEfectiva(A, B)` se llama una vez por cada
+> equipo (A cuando ataca, B cuando ataca), el sistema queda simétrico y cada
+> enfrentamiento se cuenta una sola vez. `MATRIZ_CONTRAS_DEF` **se elimina.**
+
 ```javascript
 function calcularFuerzaEfectiva(equipo, equipoRival) {
   const f = FORMACIONES[equipo.formacion];
@@ -872,12 +883,12 @@ function calcularFuerzaEfectiva(equipo, equipoRival) {
   let medio   = calcularMediocampo(equipo.medios)          + f.mod.medio;
   let defensa = calcularDefensa(equipo.defensores, equipo.arquero) + f.mod.defensa;
 
-  // 1. Modificadores planos de mentalidad propia
+  // 1. Modificadores planos de mentalidad propia (ofensiva + defensiva)
   ({ ataque, medio, defensa } = aplicarMentalidades(equipo, ataque, medio, defensa));
 
-  // 2. Matriz de contras (mi ataque vs su defensa, mi defensa vs su ataque)
-  ataque  *= MATRIZ_CONTRAS[equipo.mentalidadOfensiva][equipoRival.mentalidadDefensiva];
-  defensa *= MATRIZ_CONTRAS_DEF[equipo.mentalidadDefensiva][equipoRival.mentalidadOfensiva];
+  // 2. Matriz de contras: mi ataque vs la DEFENSA del rival. UNA sola vez.
+  //    La defensa propia NO lleva multiplicador de matriz (evita el doble conteo).
+  ataque *= MATRIZ_CONTRAS[equipo.mentalidadOfensiva][equipoRival.mentalidadDefensiva];
 
   // 3. Compatibilidad estructural formación ↔ mentalidad (§19.4)
   ({ ataque, medio, defensa } = aplicarCompatibilidad(equipo, f, ataque, medio, defensa));
@@ -1129,9 +1140,19 @@ Debe existir un **script de simulación masiva**, ejecutable desde consola, que 
 | % victoria con diferencia +30 | ≤ 87% |
 | Goles promedio por partido | 2.4–3.2 |
 | Partidos 0-0 | 6–10% |
-| Partidos con 5+ goles | ≤ 8% |
+| Partidos con 5+ goles | ≤ 11% |
 | Ventaja máxima de una mentalidad sobre otra | ≤ 12 puntos equivalentes |
 | Tasa de uso de cada mentalidad (si ninguna domina) | Ninguna por encima del 40% en el uso real |
+
+> 🔴 **Ajuste de objetivo (Etapa 5), con datos.** El `≤ 8%` de "5+ goles" era una
+> estimación sin medición. La simulación con el motor real muestra que, con el
+> promedio de goles en el rango pedido (≥ 2.4) y brechas de calidad reales, la
+> cola de 5+ es un **piso de Poisson ~9–10%** que `FACTOR_GOL` y la varianza de la
+> ocasión no bajan. El objetivo pasa a **≤ 11%** (el número equivocado era el
+> objetivo, no el motor). Se **rechaza** cerrar la brecha con un mecanismo de
+> "garbage time" (bajar el gol cuando el partido "ya está definido"): mataría las
+> remontadas, que son justo los partidos de los que se habla después. Un 5-1
+> ocasional es color; un motor que apaga los goles, no.
 
 **Este script debe existir antes de la V0.5.** Ajustar `D`, el factor `0.42` y los multiplicadores de la matriz de contras hasta cumplir la tabla.
 

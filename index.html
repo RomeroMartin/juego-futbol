@@ -378,15 +378,16 @@
 
                     <div class="pitch-header">
 
-                        <div>
+                        <div class="formation-picker">
 
-                            <span class="pitch-label">
+                            <label
+                                class="pitch-label"
+                                for="formationSelect"
+                            >
                                 FORMACIÓN
-                            </span>
+                            </label>
 
-                            <strong>
-                                4 - 3 - 3
-                            </strong>
+                            <select id="formationSelect"></select>
 
                         </div>
 
@@ -407,117 +408,13 @@
 
 
 
+                    <!-- Las líneas y los slots se generan según la formación
+                         activa (§17.1) desde js/ui/equipo.js. -->
+
                     <div
                         id="footballPitch"
                         class="football-pitch"
-                    >
-
-
-                        <!-- DELANTEROS -->
-
-                        <div class="pitch-row attackers">
-
-                            <div
-                                class="position-slot"
-                                data-position="DEL"
-                                data-slot="del1"
-                            ></div>
-
-
-                            <div
-                                class="position-slot"
-                                data-position="DEL"
-                                data-slot="del2"
-                            ></div>
-
-
-                            <div
-                                class="position-slot"
-                                data-position="DEL"
-                                data-slot="del3"
-                            ></div>
-
-                        </div>
-
-
-
-                        <!-- MEDIOCAMPISTAS -->
-
-                        <div class="pitch-row midfielders">
-
-                            <div
-                                class="position-slot"
-                                data-position="MED"
-                                data-slot="med1"
-                            ></div>
-
-
-                            <div
-                                class="position-slot"
-                                data-position="MED"
-                                data-slot="med2"
-                            ></div>
-
-
-                            <div
-                                class="position-slot"
-                                data-position="MED"
-                                data-slot="med3"
-                            ></div>
-
-                        </div>
-
-
-
-                        <!-- DEFENSORES -->
-
-                        <div class="pitch-row defenders">
-
-                            <div
-                                class="position-slot"
-                                data-position="DEF"
-                                data-slot="def1"
-                            ></div>
-
-
-                            <div
-                                class="position-slot"
-                                data-position="DEF"
-                                data-slot="def2"
-                            ></div>
-
-
-                            <div
-                                class="position-slot"
-                                data-position="DEF"
-                                data-slot="def3"
-                            ></div>
-
-
-                            <div
-                                class="position-slot"
-                                data-position="DEF"
-                                data-slot="def4"
-                            ></div>
-
-                        </div>
-
-
-
-                        <!-- ARQUERO -->
-
-                        <div class="pitch-row goalkeeper">
-
-                            <div
-                                class="position-slot"
-                                data-position="POR"
-                                data-slot="por1"
-                            ></div>
-
-                        </div>
-
-
-                    </div>
+                    ></div>
 
 
 
@@ -616,6 +513,58 @@
                         <small>
                             dato de colección · no predice el resultado
                         </small>
+
+                    </div>
+
+
+
+                    <!-- =================================
+                         MENTALIDADES (§19)
+                    ================================== -->
+
+                    <div class="team-tactics">
+
+                        <div class="tactic-picker">
+
+                            <label
+                                class="tactic-label"
+                                for="offensiveMentalitySelect"
+                            >
+                                MENTALIDAD OFENSIVA
+                            </label>
+
+                            <select id="offensiveMentalitySelect"></select>
+
+                            <small
+                                id="offensiveMentalityDesc"
+                                class="tactic-desc"
+                            ></small>
+
+                        </div>
+
+
+                        <div class="tactic-picker">
+
+                            <label
+                                class="tactic-label"
+                                for="defensiveMentalitySelect"
+                            >
+                                MENTALIDAD DEFENSIVA
+                            </label>
+
+                            <select id="defensiveMentalitySelect"></select>
+
+                            <small
+                                id="defensiveMentalityDesc"
+                                class="tactic-desc"
+                            ></small>
+
+                        </div>
+
+                        <p class="tactic-hint">
+                            La mentalidad del rival no se revela antes del
+                            partido. Elegís a ciegas: esa es la apuesta.
+                        </p>
 
                     </div>
 

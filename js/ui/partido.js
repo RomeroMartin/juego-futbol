@@ -8,6 +8,8 @@ import { calcularValoracion } from "../core/formulas.js";
 import { OFFSET_DIFICULTAD } from "../core/rivalIA.js";
 import { prepararPartido, resolverPartido } from "../core/partido.js";
 import { generarRelato } from "../core/relato.js";
+import { slotsDeFormacion } from "../config/formaciones.js";
+import { MENTALIDADES_OF, MENTALIDADES_DEF, MATRIZ_CONTRAS } from "../config/mentalidades.js";
 import { showScreen } from "./navegacion.js";
 
 
@@ -43,16 +45,30 @@ export function construirEquipoUsuario() {
         return item ? item.player : null;
     };
 
-    const arquero = jugadorDe("por1");
-    const defensores = ["def1", "def2", "def3", "def4"].map(jugadorDe);
-    const medios = ["med1", "med2", "med3"].map(jugadorDe);
-    const delanteros = ["del1", "del2", "del3"].map(jugadorDe);
+    // Los slots salen de la formación activa (§17.1), no de un 4-3-3 fijo.
+    const equipo = {
+        id: "USUARIO",
+        arquero: null,
+        defensores: [],
+        medios: [],
+        delanteros: [],
+        formacion: estado.formacion,
+        mentalidadOfensiva: estado.mentalidadOfensiva,
+        mentalidadDefensiva: estado.mentalidadDefensiva
+    };
 
-    if (!arquero || !defensores.every(Boolean) || !medios.every(Boolean) || !delanteros.every(Boolean)) {
-        return null;
+    const destino = { POR: null, DEF: "defensores", MED: "medios", DEL: "delanteros" };
+
+    for (const { slot, position } of slotsDeFormacion(estado.formacion)) {
+        const jugador = jugadorDe(slot);
+        if (!jugador) return null;   // XI incompleto: no se puede competir (§17.2).
+        if (position === "POR") equipo.arquero = jugador;
+        else equipo[destino[position]].push(jugador);
     }
 
-    return { id: "USUARIO", arquero, defensores, medios, delanteros };
+    if (!equipo.arquero) return null;
+
+    return equipo;
 }
 
 
@@ -124,10 +140,11 @@ export function renderComparacion(prep) {
     const cont = document.getElementById("comparacionContenido");
     const info = DIF_INFO[prep.dificultad];
 
+    // §19.5: del rival se ve su formación y sus stats, NUNCA su mentalidad.
     cont.innerHTML = `
         <p class="comparacion-dificultad">Dificultad: <strong>${info.etiqueta}</strong></p>
         <div class="comparacion-grid">
-            ${columnaEquipo("MI EQUIPO", "Tu XI", prep.areasUsuario)}
+            ${columnaEquipo("MI EQUIPO", "Formación " + estado.formacion, prep.areasUsuario)}
             <div class="comparacion-vs">VS</div>
             ${columnaEquipo(prep.rival.equipo.nombre, "Formación " + prep.rival.formacion, prep.rival.areas)}
         </div>
@@ -231,6 +248,64 @@ const ETIQUETA_RESULTADO = {
     D: { texto: "PERDISTE", clase: "res-derrota" }
 };
 
+// ==========================================
+// ANÁLISIS TÁCTICO POST-PARTIDO (§19.5)
+// ==========================================
+//
+// Recién ACÁ se revela la mentalidad del rival. Cada línea explica qué pasó con
+// el enfrentamiento de mentalidades, usando el porcentaje REAL aplicado por la
+// matriz de contras (ya escalado, no el nominal de §19.3). Enseña el sistema sin
+// tutorial: se aprende viendo por qué el partido salió como salió.
+
+function pct(mult) {
+    return Math.round((mult - 1) * 100);
+}
+
+function fraseAtaque(miOf, suDef, mult) {
+    const p = pct(mult);
+    if (p >= 2)  return `Tu <strong>${miOf}</strong> encontró espacios contra su ${suDef}. <span class="tact-plus">(+${p}% ataque)</span>`;
+    if (p <= -2) return `Tu <strong>${miOf}</strong> se estrelló contra su ${suDef}. <span class="tact-minus">(${p}% ataque)</span>`;
+    return `Tu <strong>${miOf}</strong> no sacó ventaja táctica contra su ${suDef}. <span class="tact-neutro">(neutro)</span>`;
+}
+
+function fraseDefensa(suOf, miDef, mult) {
+    const p = pct(mult);
+    if (p >= 2)  return `Su <strong>${suOf}</strong> encontró espacios contra tu ${miDef}. <span class="tact-minus">(+${p}% ataque rival)</span>`;
+    if (p <= -2) return `Su <strong>${suOf}</strong> se estrelló contra tu ${miDef}. <span class="tact-plus">(${p}% ataque rival)</span>`;
+    return `Su <strong>${suOf}</strong> no sacó ventaja táctica contra tu ${miDef}. <span class="tact-neutro">(neutro)</span>`;
+}
+
+function bloqueTactico(reg) {
+    if (!reg.tactica) return "";   // partidos viejos del historial (pre-Etapa 5).
+
+    const t = reg.tactica;
+    const uOf  = MENTALIDADES_OF[t.usuario.mentalidadOfensiva].etiqueta;
+    const uDef = MENTALIDADES_DEF[t.usuario.mentalidadDefensiva].etiqueta;
+    const rOf  = MENTALIDADES_OF[t.rival.mentalidadOfensiva].etiqueta;
+    const rDef = MENTALIDADES_DEF[t.rival.mentalidadDefensiva].etiqueta;
+
+    // Ataque: mi ofensiva vs su defensiva. Defensa: su ofensiva vs mi defensiva.
+    const multAtk = MATRIZ_CONTRAS[t.usuario.mentalidadOfensiva][t.rival.mentalidadDefensiva];
+    const multDef = MATRIZ_CONTRAS[t.rival.mentalidadOfensiva][t.usuario.mentalidadDefensiva];
+
+    return `
+        <div class="resultado-tactica">
+            <h3>ANÁLISIS TÁCTICO</h3>
+            <p class="tact-revelacion">
+                El rival jugó <strong>${t.rival.formacion}</strong> con
+                <strong>${rOf}</strong> / <strong>${rDef}</strong>.
+                <br>Vos jugaste <strong>${t.usuario.formacion}</strong> con
+                <strong>${uOf}</strong> / <strong>${uDef}</strong>.
+            </p>
+            <ul class="tact-lineas">
+                <li>${fraseAtaque(uOf, rDef, multAtk)}</li>
+                <li>${fraseDefensa(rOf, uDef, multDef)}</li>
+            </ul>
+        </div>
+    `;
+}
+
+
 export function renderResultado(reg) {
     const cont = document.getElementById("resultadoContenido");
     const r = ETIQUETA_RESULTADO[reg.resultado];
@@ -258,6 +333,8 @@ export function renderResultado(reg) {
             <div class="stat-fila"><span>${est.llegadasUsuario}</span><span>Llegadas al arco</span><span>${est.llegadasRival}</span></div>
             <div class="stat-fila"><span>${reg.golesUsuario}</span><span>Goles</span><span>${reg.golesRival}</span></div>
         </div>
+
+        ${bloqueTactico(reg)}
 
         <p class="resultado-nota">
             Dificultad ${DIF_INFO[reg.dificultad].etiqueta} · offset real ${signo(reg.offsetReal)}${reg.offsetReal}
