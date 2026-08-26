@@ -14,7 +14,7 @@ import {
     estado
 } from "./estado.js";
 
-import { FORMACIONES, FORMACION_DEFAULT } from "../config/formaciones.js";
+import { FORMACIONES } from "../config/formaciones.js";
 
 import {
     calcularAtaque,
@@ -43,21 +43,29 @@ export {
 //
 // Devuelven null si el área todavía no está completa (§17.2: se muestra "—").
 
+// Los cupos por área salen de la formación ACTIVA (§17.1), no de un 4-3-3 fijo.
+function slotsActivos() {
+    return FORMACIONES[estado.formacion].slots;
+}
+
 export function statsAtaque() {
     const delanteros = getTeamPlayersByPosition("DEL");
-    return delanteros.length === 3 ? calcularAtaque(delanteros) : null;
+    const req = slotsActivos().DEL;
+    return delanteros.length === req ? calcularAtaque(delanteros) : null;
 }
 
 export function statsMediocampo() {
     const medios = getTeamPlayersByPosition("MED");
-    return medios.length === 3 ? calcularMediocampo(medios) : null;
+    const req = slotsActivos().MED;
+    return medios.length === req ? calcularMediocampo(medios) : null;
 }
 
 export function statsDefensa() {
     const defensores = getTeamPlayersByPosition("DEF");
     const arqueros   = getTeamPlayersByPosition("POR");
+    const req = slotsActivos();
 
-    if (defensores.length !== 4 || arqueros.length !== 1) {
+    if (defensores.length !== req.DEF || arqueros.length !== req.POR) {
         return null;
     }
 
@@ -115,9 +123,8 @@ export function ovrMedioPlantel() {
 export function validateTeam() {
     const errors = [];
 
-    // Los cuentos requeridos salen de la formación (dato, §17.1). Por ahora
-    // solo se lee `slots`; el resto de la estructura de §17 llega en la Etapa 5.
-    const slots = FORMACIONES[FORMACION_DEFAULT].slots;
+    // Los cupos requeridos salen de la formación ACTIVA (dato, §17.1).
+    const slots = FORMACIONES[estado.formacion].slots;
     const totalRequerido = Object.values(slots).reduce((a, b) => a + b, 0);
 
     const playerCount = getTeamPlayerCount();

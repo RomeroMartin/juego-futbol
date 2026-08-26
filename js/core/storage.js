@@ -8,6 +8,18 @@
 
 import { ECONOMIA } from "../config/economia.js";
 import { DATASET_VERSION } from "../config/dataset.js";
+import {
+    FORMACION_DEFAULT,
+    FORMACIONES,
+    equipoVacioDeFormacion,
+    slotsDeFormacion
+} from "../config/formaciones.js";
+import {
+    MENTALIDAD_OF_DEFAULT,
+    MENTALIDAD_DEF_DEFAULT,
+    MENTALIDADES_OF,
+    MENTALIDADES_DEF
+} from "../config/mentalidades.js";
 
 const CLAVE_COLECCION = "futbolFiguritasCollection";
 const CLAVE_PAQUETES  = "futbolFiguritasPacks";
@@ -151,25 +163,69 @@ export function agregarAlHistorial(registro) {
 
 
 // ==========================================
-// EQUIPO VACÍO POR DEFECTO (4-3-3)
+// EQUIPO VACÍO POR DEFECTO
 // ==========================================
+//
+// El equipo persistido ya NO es solo el mapa de slots: lleva la formación
+// elegida y las dos mentalidades (§17, §19). El mapa de slots depende de la
+// formación (§17.1), así que se genera desde formaciones.js.
 
-export function equipoVacio() {
+export function equipoVacio(formacion = FORMACION_DEFAULT) {
     return {
-        por1: null,
+        schemaVersion: SCHEMA_VERSION_ACTUAL,
+        formacion,
+        team: equipoVacioDeFormacion(formacion),
+        mentalidadOfensiva: MENTALIDAD_OF_DEFAULT,
+        mentalidadDefensiva: MENTALIDAD_DEF_DEFAULT
+    };
+}
 
-        def1: null,
-        def2: null,
-        def3: null,
-        def4: null,
 
-        med1: null,
-        med2: null,
-        med3: null,
+// ==========================================
+// MIGRACIÓN DEL EQUIPO GUARDADO
+// ==========================================
+//
+// Formato viejo (Etapas 0–4): el localStorage guardaba SOLO el mapa de slots
+// (por1..del3), sin formación ni mentalidades. Se envuelve en el formato nuevo
+// conservando los jugadores ya elegidos (eran 4-3-3). Cualquier clave inválida
+// (mentalidad que ya no existe, formación desconocida) cae al default.
 
-        del1: null,
-        del2: null,
-        del3: null
+function migrarEquipo(guardado) {
+    if (!guardado || typeof guardado !== "object") {
+        return equipoVacio();
+    }
+
+    // Formato viejo: es directamente el mapa de slots (no tiene `team`).
+    if (!("team" in guardado)) {
+        return {
+            schemaVersion: SCHEMA_VERSION_ACTUAL,
+            formacion: FORMACION_DEFAULT,
+            team: { ...equipoVacioDeFormacion(FORMACION_DEFAULT), ...guardado },
+            mentalidadOfensiva: MENTALIDAD_OF_DEFAULT,
+            mentalidadDefensiva: MENTALIDAD_DEF_DEFAULT
+        };
+    }
+
+    // Formato nuevo: saneo de claves.
+    const formacion = FORMACIONES[guardado.formacion] ? guardado.formacion : FORMACION_DEFAULT;
+
+    // El mapa de slots debe corresponder a la formación; se completa lo que falte.
+    const base = equipoVacioDeFormacion(formacion);
+    const team = { ...base };
+    for (const { slot } of slotsDeFormacion(formacion)) {
+        if (guardado.team && guardado.team[slot] !== undefined) {
+            team[slot] = guardado.team[slot];
+        }
+    }
+
+    return {
+        schemaVersion: SCHEMA_VERSION_ACTUAL,
+        formacion,
+        team,
+        mentalidadOfensiva: MENTALIDADES_OF[guardado.mentalidadOfensiva]
+            ? guardado.mentalidadOfensiva : MENTALIDAD_OF_DEFAULT,
+        mentalidadDefensiva: MENTALIDADES_DEF[guardado.mentalidadDefensiva]
+            ? guardado.mentalidadDefensiva : MENTALIDAD_DEF_DEFAULT
     };
 }
 
@@ -203,10 +259,11 @@ export function cargarPaquetes() {
 }
 
 
+// Devuelve el equipo COMPLETO { formacion, team, mentalidadOfensiva,
+// mentalidadDefensiva }, migrando el formato viejo si hace falta.
 export function cargarEquipo() {
-    return JSON.parse(
-        localStorage.getItem(CLAVE_EQUIPO)
-    ) || equipoVacio();
+    const guardado = JSON.parse(localStorage.getItem(CLAVE_EQUIPO));
+    return migrarEquipo(guardado);
 }
 
 
@@ -225,8 +282,15 @@ export function guardarPartida(estado) {
         estado.packs.toString()
     );
 
+    // Se persiste el equipo COMPLETO: formación, slots y mentalidades (§17, §19).
     localStorage.setItem(
         CLAVE_EQUIPO,
-        JSON.stringify(estado.team)
+        JSON.stringify({
+            schemaVersion: SCHEMA_VERSION_ACTUAL,
+            formacion: estado.formacion,
+            team: estado.team,
+            mentalidadOfensiva: estado.mentalidadOfensiva,
+            mentalidadDefensiva: estado.mentalidadDefensiva
+        })
     );
 }

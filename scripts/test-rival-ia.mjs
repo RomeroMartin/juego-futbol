@@ -15,7 +15,7 @@ import { JUGADORES } from "../js/data/jugadores.js";
 import { generarRivalIA, DIFICULTADES } from "../js/core/rivalIA.js";
 import { jugarPartido, reVerificar } from "../js/core/partido.js";
 import { PREFIJOS, NUCLEOS, NUCLEOS_PLURALES } from "../js/data/nombresRival.js";
-import { fuerzaEfectiva } from "../js/core/motor.js";
+import { fuerzaEquipo } from "../js/core/motor.js";
 
 let fallos = 0;
 const ok = (cond, msg) => { console.log(`  ${cond ? "✓" : "✗"} ${msg}`); if (!cond) fallos++; };
@@ -73,7 +73,7 @@ const u = equipoUsuario(68);
 const xis = new Set();
 const clubesVistos = new Set();
 for (let i = 0; i < 20; i++) {
-    const rival = generarRivalIA(media(fuerzaEfectiva(u, u)), "NORMAL");
+    const rival = generarRivalIA(media(fuerzaEquipo(u, u)), "NORMAL");
     xis.add(idsXI(rival.equipo));
     [rival.equipo.arquero, ...rival.equipo.defensores, ...rival.equipo.medios, ...rival.equipo.delanteros]
         .forEach(j => clubesVistos.add(j.club));
@@ -107,7 +107,7 @@ console.log("\n4) PERFILES NO DEGENERADOS (área no se desvía >12 de la media)"
 let peorDesvio = 0;
 for (let i = 0; i < 200; i++) {
     const dif = DIFICULTADES[i % 4];
-    const rival = generarRivalIA(media(fuerzaEfectiva(equipoUsuario(50 + (i % 30)), equipoUsuario(60))), dif);
+    const rival = generarRivalIA(media(fuerzaEquipo(equipoUsuario(50 + (i % 30)), equipoUsuario(60))), dif);
     const a = rival.areas, m = rival.fuerzaMedia;
     const dev = Math.max(Math.abs(a.ataque - m), Math.abs(a.medio - m), Math.abs(a.defensa - m));
     if (dev > peorDesvio) peorDesvio = dev;
@@ -134,8 +134,8 @@ ok(reOK, "30 partidos: re-simular con la semilla guardada da el mismo marcador")
 // ------------------------------------------
 console.log("\n6) CAPADO (ÉLITE contra un usuario muy fuerte)");
 const fuerte = equipoUsuario(80);
-const rElite = generarRivalIA(media(fuerzaEfectiva(fuerte, fuerte)), "ELITE");
-console.log(`  usuario fuerza ${media(fuerzaEfectiva(fuerte, fuerte)).toFixed(1)} | ÉLITE pedía +14 | offset real ${rElite.offsetReal.toFixed(1)} | capado: ${rElite.capado}`);
+const rElite = generarRivalIA(media(fuerzaEquipo(fuerte, fuerte)), "ELITE");
+console.log(`  usuario fuerza ${media(fuerzaEquipo(fuerte, fuerte)).toFixed(1)} | ÉLITE pedía +14 | offset real ${rElite.offsetReal.toFixed(1)} | capado: ${rElite.capado}`);
 ok(rElite.capado === true, "Contra un usuario tope, ÉLITE queda capado (offset real < solicitado)");
 
 

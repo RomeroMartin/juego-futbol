@@ -864,6 +864,17 @@ OVR medio del plantel   77.1      ← dato de colección
 
 La **Fuerza Efectiva** es lo que realmente entra al motor. Aplica, en este orden: stats base → modificador de formación → modificadores de mentalidad → matriz de contras → interacción formación/mentalidad.
 
+> 🔴 **Corrección (Etapa 5).** La versión original de esta sección aplicaba la
+> matriz de contras DOS veces: `MATRIZ_CONTRAS` al ataque propio **y** una
+> `MATRIZ_CONTRAS_DEF` (espejo) a la defensa propia. Eso es un **doble conteo**:
+> el motor resuelve la ocasión como `probabilidadDuelo(ataqueA, defensaB)`, así
+> que multiplicar `ataqueA ×1.18` **y** `defensaB ×0.82` cuenta el mismo
+> enfrentamiento dos veces (el diferencial real se iba a ~36%, el doble de lo
+> calibrado en §19.3). **Solución correcta: una sola matriz, aplicada al ataque
+> del que ataca.** Como `calcularFuerzaEfectiva(A, B)` se llama una vez por cada
+> equipo (A cuando ataca, B cuando ataca), el sistema queda simétrico y cada
+> enfrentamiento se cuenta una sola vez. `MATRIZ_CONTRAS_DEF` **se elimina.**
+
 ```javascript
 function calcularFuerzaEfectiva(equipo, equipoRival) {
   const f = FORMACIONES[equipo.formacion];
@@ -872,12 +883,12 @@ function calcularFuerzaEfectiva(equipo, equipoRival) {
   let medio   = calcularMediocampo(equipo.medios)          + f.mod.medio;
   let defensa = calcularDefensa(equipo.defensores, equipo.arquero) + f.mod.defensa;
 
-  // 1. Modificadores planos de mentalidad propia
+  // 1. Modificadores planos de mentalidad propia (ofensiva + defensiva)
   ({ ataque, medio, defensa } = aplicarMentalidades(equipo, ataque, medio, defensa));
 
-  // 2. Matriz de contras (mi ataque vs su defensa, mi defensa vs su ataque)
-  ataque  *= MATRIZ_CONTRAS[equipo.mentalidadOfensiva][equipoRival.mentalidadDefensiva];
-  defensa *= MATRIZ_CONTRAS_DEF[equipo.mentalidadDefensiva][equipoRival.mentalidadOfensiva];
+  // 2. Matriz de contras: mi ataque vs la DEFENSA del rival. UNA sola vez.
+  //    La defensa propia NO lleva multiplicador de matriz (evita el doble conteo).
+  ataque *= MATRIZ_CONTRAS[equipo.mentalidadOfensiva][equipoRival.mentalidadDefensiva];
 
   // 3. Compatibilidad estructural formación ↔ mentalidad (§19.4)
   ({ ataque, medio, defensa } = aplicarCompatibilidad(equipo, f, ataque, medio, defensa));

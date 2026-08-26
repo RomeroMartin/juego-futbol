@@ -19,13 +19,19 @@ import {
 export const datasetReseteado = sincronizarDataset();
 
 
+// El equipo persistido trae formación + mapa de slots + mentalidades (§17, §19).
+const equipoGuardado = cargarEquipo();
+
 export const estado = {
-    packs:            cargarPaquetes(),
-    collection:       cargarColeccion(),
-    team:             cargarEquipo(),
-    currentPack:      [],
-    currentFilter:    "all",
-    teamPlayerFilter: "all"
+    packs:               cargarPaquetes(),
+    collection:          cargarColeccion(),
+    formacion:           equipoGuardado.formacion,
+    team:                equipoGuardado.team,
+    mentalidadOfensiva:  equipoGuardado.mentalidadOfensiva,
+    mentalidadDefensiva: equipoGuardado.mentalidadDefensiva,
+    currentPack:         [],
+    currentFilter:       "all",
+    teamPlayerFilter:    "all"
 };
 
 

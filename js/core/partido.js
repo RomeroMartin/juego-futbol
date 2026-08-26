@@ -10,9 +10,11 @@
 // son las que usa la UI y sí leen el estado.
 
 import { JUGADORES } from "../data/jugadores.js";
-import { simularPartido, fuerzaEfectiva } from "./motor.js";
+import { simularPartido, fuerzaEquipo } from "./motor.js";
 import { generarRivalIA } from "./rivalIA.js";
 import { scoreAtaque, scoreDefensor, scoreArquero } from "./formulas.js";
+import { FORMACION_DEFAULT } from "../config/formaciones.js";
+import { MENTALIDAD_OF_DEFAULT, MENTALIDAD_DEF_DEFAULT } from "../config/mentalidades.js";
 
 
 // Catálogo id → jugador (para re-verificar partidos desde ids guardados).
@@ -140,7 +142,8 @@ export function prepararPartido(equipoUsuario, dificultad, opciones = {}) {
     const usuario = { ...equipoUsuario, id: "USUARIO", nombre: "Tu equipo" };
     const rand = opciones.randRival ?? Math.random;
 
-    const areasUsuario = fuerzaEfectiva(usuario, usuario);
+    // Calidad base del usuario (sin táctica): con esto se calibra el rival.
+    const areasUsuario = fuerzaEquipo(usuario);
     const fuerzaUsuario = mediaAreas(areasUsuario);
     const rival = generarRivalIA(fuerzaUsuario, dificultad, rand);
     const semilla = opciones.semilla ?? Math.floor(rand() * 0x7fffffff);
@@ -168,11 +171,16 @@ export function resolverPartido(prep) {
     const resultado = golesUsuario > golesRival ? "V"
         : golesUsuario < golesRival ? "D" : "E";
 
+    // Se guardan también la formación y las mentalidades: sin ellas, re-simular
+    // desde los ids daría OTRO marcador (la Fuerza Efectiva depende de la táctica).
     const ids = (e) => ({
         arquero: e.arquero.id,
         defensores: e.defensores.map(j => j.id),
         medios: e.medios.map(j => j.id),
-        delanteros: e.delanteros.map(j => j.id)
+        delanteros: e.delanteros.map(j => j.id),
+        formacion: e.formacion || FORMACION_DEFAULT,
+        mentalidadOfensiva: e.mentalidadOfensiva || MENTALIDAD_OF_DEFAULT,
+        mentalidadDefensiva: e.mentalidadDefensiva || MENTALIDAD_DEF_DEFAULT
     });
 
     return {
@@ -201,6 +209,20 @@ export function resolverPartido(prep) {
         },
         equipoUsuarioIds: ids(usuario),
         equipoRivalIds: ids(rival.equipo),
+        // Táctica de ambos, para el análisis post-partido (§19.5). La del rival
+        // recién se REVELA acá, después de jugar; nunca antes.
+        tactica: {
+            usuario: {
+                formacion: usuario.formacion || FORMACION_DEFAULT,
+                mentalidadOfensiva: usuario.mentalidadOfensiva || MENTALIDAD_OF_DEFAULT,
+                mentalidadDefensiva: usuario.mentalidadDefensiva || MENTALIDAD_DEF_DEFAULT
+            },
+            rival: {
+                formacion: rival.formacion,
+                mentalidadOfensiva: rival.mentalidadOfensiva,
+                mentalidadDefensiva: rival.mentalidadDefensiva
+            }
+        },
         mvp,
         estadisticas: stats,
         eventos: r.eventos
@@ -230,7 +252,11 @@ function equipoDesdeIds(ids, id) {
         arquero: CATALOGO.get(ids.arquero),
         defensores: ids.defensores.map(i => CATALOGO.get(i)),
         medios: ids.medios.map(i => CATALOGO.get(i)),
-        delanteros: ids.delanteros.map(i => CATALOGO.get(i))
+        delanteros: ids.delanteros.map(i => CATALOGO.get(i)),
+        // Restaurar la táctica es imprescindible para reproducir el marcador.
+        formacion: ids.formacion || FORMACION_DEFAULT,
+        mentalidadOfensiva: ids.mentalidadOfensiva || MENTALIDAD_OF_DEFAULT,
+        mentalidadDefensiva: ids.mentalidadDefensiva || MENTALIDAD_DEF_DEFAULT
     };
 }
 

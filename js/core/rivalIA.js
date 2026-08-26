@@ -17,8 +17,18 @@
 // semilla + las composiciones guardadas, no el armado del rival.
 
 import { JUGADORES } from "../data/jugadores.js";
-import { fuerzaEfectiva } from "./motor.js";
+import { fuerzaEquipo } from "./motor.js";
 import { generarNombreRival } from "../data/nombresRival.js";
+import { FORMACIONES, CLAVES_FORMACION } from "../config/formaciones.js";
+import {
+    CLAVES_OFENSIVA,
+    CLAVES_DEFENSIVA,
+    MENTALIDAD_OF_DEFAULT,
+    MENTALIDAD_DEF_DEFAULT,
+    compatAtaque,
+    compatMedio,
+    compatDefensa
+} from "../config/mentalidades.js";
 
 
 export const OFFSET_DIFICULTAD = { FACIL: -8, NORMAL: 0, DIFICIL: 6, ELITE: 14 };
@@ -65,8 +75,9 @@ function mediaAreas(areas) {
 }
 
 
-// Construye un candidato a rival con un nivel base y un sesgo de perfil al azar.
-function construirCandidato(rand) {
+// Construye un candidato a rival con un nivel base y un sesgo de perfil al azar,
+// respetando los slots de la formación elegida (§17). `slots` = { POR,DEF,MED,DEL }.
+function construirCandidato(rand, slots) {
     const base = 48 + rand() * 38; // 48..86 (el extremo alto se cubre por ventana)
 
     // Sesgo de perfil: a veces uniforme, a veces ofensivo, a veces defensivo.
@@ -83,13 +94,16 @@ function construirCandidato(rand) {
 
     const equipo = {
         id: "IA",
-        arquero:    elegirCerca("POR", nivArq, 1, rand)[0],
-        defensores: elegirCerca("DEF", nivDef, 4, rand),
-        medios:     elegirCerca("MED", nivMed, 3, rand),
-        delanteros: elegirCerca("DEL", nivDel, 3, rand)
+        arquero:    elegirCerca("POR", nivArq, slots.POR, rand)[0],
+        defensores: elegirCerca("DEF", nivDef, slots.DEF, rand),
+        medios:     elegirCerca("MED", nivMed, slots.MED, rand),
+        delanteros: elegirCerca("DEL", nivDel, slots.DEL, rand)
     };
 
-    const areas = fuerzaEfectiva(equipo, equipo);
+    // Calidad cruda (base): rival-independiente, sin formación ni mentalidad.
+    // Es lo que se muestra antes del partido (§19.5) y con lo que se calibra el
+    // offset por dificultad (§31); NO incluye la táctica (que se revela jugando).
+    const areas = fuerzaEquipo(equipo);
     const f = mediaAreas(areas);
     const maxDev = Math.max(
         Math.abs(areas.ataque - f),
@@ -102,10 +116,66 @@ function construirCandidato(rand) {
 
 
 // ==========================================
+// ELECCIÓN DE MENTALIDAD DE LA IA (§31.2)
+// ==========================================
+//
+// REGLA DURA: la IA NUNCA conoce tu mentalidad. Elige a ciegas, igual que vos
+// (§31.2). Nunca recibe tu XI ni tus mentalidades como parámetro.
+//
+//  FÁCIL   → siempre EQUILIBRADO / LÍNEA MEDIA.
+//  NORMAL  → aleatoria uniforme entre todas.
+//  DIFÍCIL → aleatoria, pero descarta combos estructuralmente malos (§19.4).
+//  ÉLITE   → coherente con su formación (mejor compatibilidad), variando.
+
+const elegir = (arr, rand) => arr[Math.floor(rand() * arr.length)];
+
+// ¿La ofensiva encaja estructuralmente en esta formación? (§19.4: compat ≥ 1).
+const ofensivaCoherente = (clave, f) => compatAtaque(clave, f) >= 1.0;
+// ¿La defensiva encaja? (PRESIÓN ALTA y BLOQUE COMPACTO dependen de la densidad).
+const defensivaCoherente = (clave, f) =>
+    compatMedio(clave, f) >= 1.0 && compatDefensa(clave, f) >= 1.0;
+
+function elegirMentalidadesIA(dificultad, formacion, rand) {
+    const f = FORMACIONES[formacion];
+
+    if (dificultad === "FACIL") {
+        return { of: MENTALIDAD_OF_DEFAULT, def: MENTALIDAD_DEF_DEFAULT };
+    }
+
+    if (dificultad === "NORMAL") {
+        return { of: elegir(CLAVES_OFENSIVA, rand), def: elegir(CLAVES_DEFENSIVA, rand) };
+    }
+
+    if (dificultad === "DIFICIL") {
+        // Descarta combos estructuralmente malos; si ninguno queda, cae al neutro.
+        const ofOk  = CLAVES_OFENSIVA.filter(c => ofensivaCoherente(c, f));
+        const defOk = CLAVES_DEFENSIVA.filter(c => defensivaCoherente(c, f));
+        return {
+            of:  ofOk.length  ? elegir(ofOk, rand)  : MENTALIDAD_OF_DEFAULT,
+            def: defOk.length ? elegir(defOk, rand) : MENTALIDAD_DEF_DEFAULT
+        };
+    }
+
+    // ÉLITE: entre las coherentes, prioriza las que MÁS aprovechan la formación
+    // (mayor compatibilidad), variando entre las mejores.
+    const mejores = (claves, compat) => {
+        const conCompat = claves.map(c => ({ c, v: compat(c, f) }));
+        const max = Math.max(...conCompat.map(x => x.v));
+        const top = conCompat.filter(x => x.v >= max - 0.001).map(x => x.c);
+        return elegir(top, rand);
+    };
+    return {
+        of:  mejores(CLAVES_OFENSIVA,  compatAtaque),
+        def: mejores(CLAVES_DEFENSIVA, (c, ff) => compatMedio(c, ff) * compatDefensa(c, ff))
+    };
+}
+
+
+// ==========================================
 // GENERAR RIVAL IA
 // ==========================================
 //
-// fuerzaUsuario: Fuerza Efectiva media del usuario (número).
+// fuerzaUsuario: Fuerza Efectiva media (calidad base) del usuario (número).
 // dificultad: "FACIL" | "NORMAL" | "DIFICIL" | "ELITE".
 //
 // Devuelve, entre otras cosas, `offsetReal` (lo que de verdad se alcanzó) y
@@ -115,10 +185,14 @@ export function generarRivalIA(fuerzaUsuario, dificultad, rand = Math.random) {
     const offsetSolicitado = OFFSET_DIFICULTAD[dificultad];
     const objetivo = fuerzaUsuario + offsetSolicitado;
 
-    // Genera candidatos y descarta perfiles degenerados.
+    // La IA elige su formación al azar (§31.1), a ciegas de tu XI.
+    const formacion = elegir(CLAVES_FORMACION, rand);
+    const slots = FORMACIONES[formacion].slots;
+
+    // Genera candidatos con esa formación y descarta perfiles degenerados.
     const candidatos = [];
     for (let i = 0; i < N_CANDIDATOS; i++) {
-        const c = construirCandidato(rand);
+        const c = construirCandidato(rand, slots);
         if (c.maxDev <= MAX_DESVIO_AREA) candidatos.push(c);
     }
 
@@ -145,12 +219,24 @@ export function generarRivalIA(fuerzaUsuario, dificultad, rand = Math.random) {
     const offsetReal = elegido.f - fuerzaUsuario;
     const nombre = generarNombreRival(rand);
 
+    // Mentalidades A CIEGAS (§31.2): dependen solo de la dificultad y de la
+    // propia formación de la IA, NUNCA de tu XI ni de tus mentalidades.
+    const ment = elegirMentalidadesIA(dificultad, formacion, rand);
+
     return {
-        equipo: { ...elegido.equipo, nombre },
+        equipo: {
+            ...elegido.equipo,
+            nombre,
+            formacion,
+            mentalidadOfensiva: ment.of,
+            mentalidadDefensiva: ment.def
+        },
         nombre,
         dificultad,
-        formacion: "4-3-3",
-        areas: elegido.areas,        // { ataque, medio, defensa, arquero, ... }
+        formacion,
+        mentalidadOfensiva: ment.of,
+        mentalidadDefensiva: ment.def,
+        areas: elegido.areas,        // calidad base { ataque, medio, defensa, arquero }
         fuerzaMedia: elegido.f,
         objetivo,
         offsetSolicitado,
