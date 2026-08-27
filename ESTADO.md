@@ -21,6 +21,10 @@
 - **Contador de puntos y Pack PREMIUM a los 50 (§15.3)**.
 - **Tope de 3 amistosos con puntos por día (§15.3.2)**, implementado aunque los
   amistosos entre usuarios lleguen en la Etapa 10.
+- **Sugerencia de formación** en el constructor de equipo: si el XI no se puede
+  armar con la colección en la formación ACTUAL pero SÍ en otra, se avisa y se
+  ofrece el cambio con un botón ("Te faltan 1 delantero para el 4-3-3, pero podés
+  armar un 4-4-2 con lo que tenés"). Aplica siempre, no solo al usuario nuevo.
 
 - **🔴 LA REGLA QUE SOSTIENE LA ECONOMÍA (§15.0, §15.3): los partidos vs IA
   otorgan FICHAS pero NUNCA sobres ni puntos.** Cero puntos, en toda dificultad.
@@ -50,6 +54,7 @@ Modificados:
 | `js/ui/navegacion.js` | Header con **Fichas** y **puntos** (n/50) + total de paquetes. Render de home (inventario) y tienda. |
 | `js/ui/componentes.js` | La carta muestra la **etiqueta** de rareza con tilde; `getRarity` fallback ahora devuelve la clave canónica `COMUN` (sin tilde). |
 | `js/ui/partido.js` | Tras un partido vs IA: `registrarResultadoEconomia(...,"IA",...)` → suma Fichas, **puntos quedan en 0**. Muestra las Fichas ganadas en el resultado. |
+| `js/ui/equipo.js` | **Sugerencia de formación** en `updateTeamStatus`: chequea las 6 formaciones (§17) contra la colección; si la actual no es armable pero otra sí, avisa y ofrece cambiar con un botón. `cambiarFormacion` sincroniza el `<select>`. |
 | `js/main.js` | `initPaquetes()` + `initTienda()`; se quitó el botón único "ABRIR PAQUETE". |
 | `index.html`, `css/estilos.css` | Header (Fichas/puntos), inventario de sobres, pantalla y nav de Tienda, botón de venta, bloque de Fichas del resultado. |
 
@@ -128,6 +133,25 @@ inventario, apertura del sobre de bienvenida (composición 1/2/2/1), cierre,
 colección (30 figuritas), tienda (3 cards, compra deshabilitada sin fichas), y un
 partido completo (armar 4-3-3 → jugar → **+70 Fichas**, puntos **0/50**). Sin
 errores de JS (el único 404 es `favicon.ico`, ajeno a esta etapa).
+
+## 4.b Composición del pool por posición (dato para calibrar §17)
+
+Pool de **869** jugadores. Es **MED-pesado y DEL-escaso**, lo que hace que las
+formaciones con 3 delanteros (4-3-3, 3-4-3) sean estructuralmente más caras de
+armar. Los mods de §17 se calibraron sin este dato — **pendiente de evaluar con
+el creador** (no se cambió nada).
+
+| | POR | DEF | MED | DEL | Total |
+|---|---|---|---|---|---|
+| **Total** | 88 (10.1%) | 297 (34.2%) | 334 (38.4%) | 150 (17.3%) | 869 |
+| COMUN | 45 | 142 | 179 | 69 | 435 |
+| ORO | 23 | 94 | 92 | 52 | 261 |
+| DESTACADO | 13 | 51 | 46 | 20 | 130 |
+| ESTRELLA | 3 | 10 | 15 | 7 | 35 |
+| LEYENDA | 4 | 0 | 2 | 2 | 8 |
+
+Nota: **0 defensores LEYENDA** — es el único caso donde se activa la "bajada de
+rareza por posición" (Aclaración 1), en paquetes POSICIONAL DEF.
 
 ## 5. Pendientes conocidos (no son de esta etapa)
 
