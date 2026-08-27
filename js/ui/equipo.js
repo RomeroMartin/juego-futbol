@@ -225,6 +225,10 @@ function cambiarFormacion(nuevaClave) {
     estado.formacion = nuevaClave;
     estado.team = nuevoTeam;
 
+    // Mantener el selector en sí­ncro (el cambio puede venir del botón de
+    // sugerencia, no solo del propio <select>).
+    formationSelect.value = nuevaClave;
+
     guardarPartida(estado);
     renderTeam();
 }
@@ -477,6 +481,52 @@ export function updateTeamStats() {
 // ESTADO DEL EQUIPO
 // ==========================================
 
+// Nombre de cada posición para los mensajes (singular / plural).
+const NOMBRE_POSICION = {
+    POR: ["arquero", "arqueros"],
+    DEF: ["defensor", "defensores"],
+    MED: ["mediocampista", "mediocampistas"],
+    DEL: ["delantero", "delanteros"]
+};
+
+// Cuenta jugadores DISTINTOS por posición en la colección (lo que el usuario
+// PODRÍA alinear, sin importar cómo esté armado el XI ahora).
+function distintosEnColeccion() {
+    const c = { POR: 0, DEF: 0, MED: 0, DEL: 0 };
+    for (const item of estado.collection) {
+        if (c[item.player.position] !== undefined) c[item.player.position]++;
+    }
+    return c;
+}
+
+// ¿Se puede llenar una formación con esos jugadores distintos?
+function puedeArmar(clave, distintos) {
+    const s = FORMACIONES[clave].slots;
+    return distintos.POR >= s.POR && distintos.DEF >= s.DEF
+        && distintos.MED >= s.MED && distintos.DEL >= s.DEL;
+}
+
+// Formaciones (distintas de la actual) que SÍ se pueden armar con la colección.
+function formacionesArmables(distintos) {
+    return CLAVES_FORMACION.filter(
+        c => c !== estado.formacion && puedeArmar(c, distintos)
+    );
+}
+
+// Posiciones que faltan para la formación actual, como texto ("delanteros").
+function faltantesDeFormacion(clave, distintos) {
+    const s = FORMACIONES[clave].slots;
+    const faltan = [];
+    for (const pos of ["POR", "DEF", "MED", "DEL"]) {
+        const deficit = s[pos] - distintos[pos];
+        if (deficit > 0) {
+            const nombre = NOMBRE_POSICION[pos][deficit === 1 ? 0 : 1];
+            faltan.push(`${deficit} ${nombre}`);
+        }
+    }
+    return faltan;
+}
+
 export function updateTeamStatus() {
     const validation = validateTeam();
 
@@ -511,6 +561,38 @@ export function updateTeamStatus() {
 
     const missing = validation.errors.join(" ");
 
+    // Sugerencia de formación: si la formación ACTUAL no se puede armar con la
+    // colección pero SÍ otra, se lo avisamos y ofrecemos el cambio. Aplica siempre
+    // (no solo al usuario nuevo): perder un partido por no saber que con otra
+    // formación ya podías jugar es el peor primer minuto posible.
+    const distintos = distintosEnColeccion();
+    let sugerencia = "";
+    if (!puedeArmar(estado.formacion, distintos)) {
+        const alternativas = formacionesArmables(distintos);
+        if (alternativas.length > 0) {
+            const alt = alternativas[0];
+            const faltan = faltantesDeFormacion(estado.formacion, distintos);
+            const faltanTexto = faltan.length
+                ? `Te faltan ${faltan.join(" y ")} para el ${estado.formacion}`
+                : `No podés armar el ${estado.formacion}`;
+            sugerencia = `
+                <div class="status-sugerencia">
+                    <span>
+                        ${faltanTexto}, pero podés armar un
+                        <strong>${alt}</strong> con lo que tenés.
+                    </span>
+                    <button
+                        type="button"
+                        class="status-sugerencia-btn"
+                        data-sugerir-formacion="${alt}"
+                    >
+                        Cambiar a ${alt}
+                    </button>
+                </div>
+            `;
+        }
+    }
+
     teamStatusElement.innerHTML = `
 
         <span class="status-icon">
@@ -527,9 +609,18 @@ export function updateTeamStatus() {
                 ${missing}
             </span>
 
+            ${sugerencia}
+
         </div>
 
     `;
+
+    const botonSugerencia = teamStatusElement.querySelector("[data-sugerir-formacion]");
+    if (botonSugerencia) {
+        botonSugerencia.addEventListener("click", () => {
+            cambiarFormacion(botonSugerencia.dataset.sugerirFormacion);
+        });
+    }
 }
 
 

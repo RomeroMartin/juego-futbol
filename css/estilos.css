@@ -2514,3 +2514,33 @@ main {
     font-size: 12px;
     margin-top: 4px;
 }
+
+
+/* Sugerencia de formación cuando el XI no es armable en la actual */
+.status-sugerencia {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+}
+.status-sugerencia strong {
+    color: var(--green);
+}
+.status-sugerencia-btn {
+    align-self: flex-start;
+    padding: 8px 14px;
+    background: var(--green);
+    color: #06231a;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: filter 0.15s;
+}
+.status-sugerencia-btn:hover {
+    filter: brightness(1.1);
+}
