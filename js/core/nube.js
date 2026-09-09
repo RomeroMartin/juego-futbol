@@ -94,9 +94,7 @@ export function reiniciarCacheNube() {
 // Devuelve { existe, usuario, paquetes, collection, equipo, historial }.
 // `existe:false` significa usuario nuevo en la nube (sin documento todavía).
 export async function leerPartida(uid) {
-    console.log("🔎 FF: leerPartida → getDoc(users/" + uid + ")…");
     const usuarioSnap = await getDoc(doc(db, "users", uid));
-    console.log("🔎 FF: getDoc usuario OK, existe =", usuarioSnap.exists());
 
     if (!usuarioSnap.exists()) {
         reiniciarCacheNube();
@@ -113,9 +111,7 @@ export async function leerPartida(uid) {
 
     // Colección: rehidrata cada jugador desde el catálogo local. Los ids que ya
     // no existen en el dataset se descartan (dataset cambiado, §10).
-    console.log("🔎 FF: leyendo subcolección collection…");
     const coleccionSnap = await getDocs(collection(db, "users", uid, "collection"));
-    console.log("🔎 FF: collection OK,", coleccionSnap.size, "docs");
     const coleccion = [];
     reiniciarCacheNube();
     for (const d of coleccionSnap.docs) {
@@ -129,9 +125,7 @@ export async function leerPartida(uid) {
 
     // Equipo (§51): formación + XI + mentalidades. Se sanea con storage.equipoVacio
     // como base si el documento no existe.
-    console.log("🔎 FF: leyendo teams/actual…");
     const equipoSnap = await getDoc(doc(db, "users", uid, "teams", "actual"));
-    console.log("🔎 FF: teams/actual OK");
     let equipo;
     if (equipoSnap.exists()) {
         const e = equipoSnap.data();
@@ -147,9 +141,7 @@ export async function leerPartida(uid) {
     }
 
     // Historial: se ordena por fecha (más reciente primero).
-    console.log("🔎 FF: leyendo historial…");
     const historialSnap = await getDocs(collection(db, "users", uid, "historial"));
-    console.log("🔎 FF: historial OK,", historialSnap.size, "docs");
     const historial = historialSnap.docs
         .map(d => d.data())
         .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
@@ -170,19 +162,15 @@ export async function escribirPartidaCompleta(uid, estado, perfil) {
     const ahora = new Date().toISOString();
 
     // Documento de usuario (perfil + §44 + inventario).
-    console.log("🔎 FF: escribiendo doc usuario…");
     await setDoc(doc(db, "users", uid), {
         ...perfil,
         usuario: extraerUsuario(estado.usuario),
         paquetes: { ...estado.paquetes },
         actualizadoEn: ahora
     });
-    console.log("🔎 FF: doc usuario escrito");
 
     // Documento de equipo.
-    console.log("🔎 FF: escribiendo doc equipo…");
     await setDoc(doc(db, "users", uid, "teams", "actual"), docEquipo(estado, ahora));
-    console.log("🔎 FF: doc equipo escrito");
 
     // Colección en lotes.
     let batch = writeBatch(db);
@@ -205,13 +193,11 @@ export async function escribirPartidaCompleta(uid, estado, perfil) {
         }
     }
     if (ops > 0) await batch.commit();
-    console.log("🔎 FF: colección escrita (" + estado.collection.length + " cartas)");
 
     // Historial (si venía de una migración local).
     for (const registro of estado.historial || []) {
         await addDoc(collection(db, "users", uid, "historial"), registro);
     }
-    console.log("🔎 FF: escribirPartidaCompleta TERMINADA");
 }
 
 

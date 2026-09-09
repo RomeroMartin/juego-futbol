@@ -2562,6 +2562,13 @@ main {
         radial-gradient(circle at 50% 0%, #10261b 0%, var(--background) 60%);
 }
 
+/* El `display: flex` de arriba le gana al atributo `hidden` (estilos de autor
+   vencen a los del navegador), así que al ocultar el overlay hay que decirlo
+   explícito; si no, la pantalla de "Cargando…" queda tapando el juego. */
+.auth-overlay[hidden] {
+    display: none;
+}
+
 .auth-cargando {
     text-align: center;
     color: var(--muted);

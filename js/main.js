@@ -116,7 +116,6 @@ function conTimeout(promesa, ms, mensaje) {
 initLogin();
 
 observarSesion(async (user) => {
-    console.log("🔎 FF: observarSesion →", user ? ("hay sesión: " + user.uid) : "sin sesión");
     if (!user) {
         limpiarEstado();
         document.getElementById("userName").textContent = "";
@@ -135,7 +134,6 @@ observarSesion(async (user) => {
             "desde otra red."
         );
 
-        console.log("🔎 FF: hidratación OK, arrancando juego y render…");
         arrancarJuegoUnaVez();
 
         document.getElementById("userName").textContent =
@@ -145,7 +143,6 @@ observarSesion(async (user) => {
         renderTeam();
         showScreen("homeScreen");
         ocultarAuth();
-        console.log("🔎 FF: LISTO, juego visible");
 
         if (datasetReseteado) {
             document.getElementById("datasetNotice").hidden = false;
