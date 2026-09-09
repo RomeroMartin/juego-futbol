@@ -1,0 +1,2 @@
+# Dependencias del backend: se instalan con `npm install` y no se versionan.
+node_modules/
