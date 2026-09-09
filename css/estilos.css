@@ -2751,3 +2751,155 @@ main {
     border-color: var(--green);
     color: var(--white);
 }
+
+
+/* =====================================
+   TORNEOS (Etapa 9)
+===================================== */
+
+#torneosContenido {
+    max-width: 720px;
+    margin: 0 auto;
+}
+
+.torneo-vacio {
+    color: var(--muted);
+    text-align: center;
+    padding: 30px 10px;
+    line-height: 1.5;
+}
+
+.torneo-lista {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 28px;
+}
+
+.torneo-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    text-align: left;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    color: var(--white);
+    transition: border-color 0.15s;
+}
+
+.torneo-item:hover { border-color: var(--green); }
+
+.torneo-item-datos { display: flex; flex-direction: column; gap: 3px; }
+.torneo-item-datos small { color: var(--muted); }
+
+.torneo-item-codigo {
+    font-family: monospace;
+    font-size: 15px;
+    letter-spacing: 2px;
+    color: var(--green);
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 8px;
+}
+
+.torneo-acciones {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+@media (max-width: 560px) {
+    .torneo-acciones { grid-template-columns: 1fr; }
+}
+
+.torneo-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+}
+
+.torneo-card h3 { font-size: 15px; margin-bottom: 12px; }
+
+.torneo-card input {
+    width: 100%;
+    padding: 11px 13px;
+    margin-bottom: 12px;
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--white);
+    font-size: 14px;
+}
+
+.torneo-card input:focus { outline: none; border-color: var(--green); }
+.torneo-card .main-button,
+.torneo-card .secondary-button { width: 100%; margin: 0; }
+
+.torneo-detalle {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-top: 14px;
+}
+
+.torneo-detalle h2 { margin-bottom: 18px; }
+.torneo-detalle h3 { font-size: 14px; margin: 20px 0 10px; color: var(--muted); }
+
+.torneo-codigo-box {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: var(--background);
+    border: 1px dashed var(--green);
+    border-radius: 10px;
+    padding: 14px 16px;
+}
+
+.torneo-codigo-box span { font-size: 12px; color: var(--muted); }
+.torneo-codigo-box strong {
+    font-family: monospace;
+    font-size: 26px;
+    letter-spacing: 4px;
+    color: var(--green);
+}
+
+.torneo-participantes {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.torneo-participantes li {
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 14px;
+}
+
+.torneo-nota { color: var(--muted); font-size: 13px; margin-top: 14px; }
+
+.torneo-aviso {
+    margin: 16px 0;
+    padding: 12px 14px;
+    background: rgba(220, 180, 60, 0.12);
+    border: 1px solid rgba(220, 180, 60, 0.4);
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.torneo-aviso-ok {
+    background: rgba(36, 208, 111, 0.12);
+    border-color: rgba(36, 208, 111, 0.4);
+}
+
+.torneo-detalle .main-button { margin-top: 18px; }

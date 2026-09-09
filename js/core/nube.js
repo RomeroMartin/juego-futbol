@@ -19,7 +19,10 @@ import {
     collection,
     getDoc,
     getDocs,
-    setDoc
+    setDoc,
+    query,
+    where,
+    onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 
@@ -162,5 +165,48 @@ export async function venderRepetidoNube(playerId) {
 // Devuelve { eco, usuario, paquetes }.
 export async function registrarPartidoNube(registro) {
     const res = await llamar("registrarPartidoIA")({ registro });
+    return res.data;
+}
+
+
+// ==========================================
+// TORNEOS (Etapa 9): lecturas en vivo + llamadas al servidor
+// ==========================================
+
+// Escucha en tiempo real los torneos donde participo. `cb(lista)` se llama con
+// el estado actual cada vez que algo cambia. Devuelve la función para desuscribir.
+export function escucharMisTorneos(uid, cb) {
+    const q = query(collection(db, "torneos"), where("participantes", "array-contains", uid));
+    return onSnapshot(
+        q,
+        snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+        err => console.error("[nube] Error escuchando mis torneos:", err)
+    );
+}
+
+// Escucha un torneo puntual en tiempo real (sala en vivo). `cb(torneo|null)`.
+export function escucharTorneo(id, cb) {
+    return onSnapshot(
+        doc(db, "torneos", id),
+        snap => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null),
+        err => console.error("[nube] Error escuchando el torneo:", err)
+    );
+}
+
+// Crea un torneo. Devuelve { torneoId, codigoInvitacion }.
+export async function crearTorneoNube(nombre) {
+    const res = await llamar("crearTorneo")({ nombre });
+    return res.data;
+}
+
+// Se une a un torneo por código. Devuelve { torneoId }.
+export async function unirseTorneoNube(codigo) {
+    const res = await llamar("unirseTorneo")({ codigo });
+    return res.data;
+}
+
+// El creador abre la ventana de armado. Devuelve { ok, ... } o { ok:false, validacion }.
+export async function abrirArmadoNube(torneoId) {
+    const res = await llamar("abrirArmado")({ torneoId });
     return res.data;
 }
