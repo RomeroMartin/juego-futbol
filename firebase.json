@@ -10,6 +10,14 @@
       "data-raw/**",
       "*.md",
       "firestore.rules"
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(js|css|html)",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, max-age=0" }
+        ]
+      }
     ]
   },
   "firestore": {
