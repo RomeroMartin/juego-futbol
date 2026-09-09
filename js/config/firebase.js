@@ -36,6 +36,14 @@ export const auth = getAuth(app);
 // `ignoreUndefinedProperties`: Firestore rechaza campos `undefined`. Los
 // registros de partido son objetos anidados donde algún campo opcional puede
 // venir sin valor; con esto se ignoran en vez de romper la escritura.
+//
+// `experimentalAutoDetectLongPolling`: por defecto Firestore usa una conexión
+// por streaming (WebChannel) que ALGUNAS redes (proxies corporativos, la red de
+// un negocio) o extensiones del navegador bloquean silenciosamente. Cuando eso
+// pasa, las operaciones quedan colgadas para siempre (la escritura llega al
+// servidor pero la confirmación nunca vuelve). Esta opción detecta ese bloqueo y
+// cae automáticamente a "long polling", que atraviesa esas redes.
 export const db = initializeFirestore(app, {
-    ignoreUndefinedProperties: true
+    ignoreUndefinedProperties: true,
+    experimentalAutoDetectLongPolling: true
 });

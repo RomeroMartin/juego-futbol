@@ -102,6 +102,17 @@ function arrancarJuegoUnaVez() {
 // SESIÓN
 // ==========================================
 
+// Corre `promesa`, pero si tarda más de `ms` la rechaza con un mensaje claro.
+// Evita que un problema de red deje al usuario mirando el spinner para siempre.
+function conTimeout(promesa, ms, mensaje) {
+    let temporizador;
+    const limite = new Promise((_, rechazar) => {
+        temporizador = setTimeout(() => rechazar(new Error(mensaje)), ms);
+    });
+    return Promise.race([promesa, limite])
+        .finally(() => clearTimeout(temporizador));
+}
+
 initLogin();
 
 observarSesion(async (user) => {
@@ -115,7 +126,13 @@ observarSesion(async (user) => {
     // Hay sesión: cargamos la partida (o la creamos/migramos) y mostramos todo.
     authOcupado(true);
     try {
-        const { datasetReseteado } = await hidratarDesdeNube(user);
+        const { datasetReseteado } = await conTimeout(
+            hidratarDesdeNube(user),
+            20000,
+            "No se pudo conectar con la base de datos. Puede ser la red o una " +
+            "extensión del navegador bloqueando la conexión. Probá de nuevo o " +
+            "desde otra red."
+        );
 
         arrancarJuegoUnaVez();
 
@@ -132,7 +149,7 @@ observarSesion(async (user) => {
         }
     } catch (error) {
         console.error("[main] No se pudo cargar la partida:", error);
-        mostrarErrorAuth("No se pudo cargar tu partida. Reintentá.");
+        mostrarErrorAuth(error?.message || "No se pudo cargar tu partida. Reintentá.");
         await salir();
     }
 });
