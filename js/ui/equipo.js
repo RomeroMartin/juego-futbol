@@ -7,7 +7,7 @@ import {
     isPlayerInTeam
 } from "../core/estado.js";
 
-import { guardarPartida } from "../core/storage.js";
+import { guardarPartida } from "../core/nube.js";
 
 import {
     statsAtaque,

@@ -3,10 +3,22 @@
 // ==========================================
 //
 // Se carga como módulo ES desde index.html (<script type="module">).
-// Importa los módulos, engancha los eventos y hace el primer render.
+//
+// Etapa 7: el arranque es ASÍNCRONO y pasa por el login. Al iniciar, se observa
+// la sesión de Firebase: si hay usuario, se carga su partida desde Firestore y
+// se muestra el juego; si no, se muestra el formulario de login. El juego queda
+// detrás del overlay hasta que haya sesión.
 
-import { estado, datasetReseteado } from "./core/estado.js";
-import { guardarPartida } from "./core/storage.js";
+import { hidratarDesdeNube, limpiarEstado } from "./core/estado.js";
+import { observarSesion, salir } from "./core/auth.js";
+import {
+    initLogin,
+    mostrarLogin,
+    authOcupado,
+    ocultarAuth,
+    mostrarErrorAuth
+} from "./ui/login.js";
+
 import { showScreen, updateHeader } from "./ui/navegacion.js";
 import { initPaquetes } from "./ui/paquetes.js";
 import { initTienda } from "./ui/tienda.js";
@@ -16,26 +28,21 @@ import { initPartido } from "./ui/partido.js";
 
 
 // ==========================================
-// ABRIR CONSTRUCTOR DE EQUIPO
+// LISTENERS ESTÁTICOS (no dependen del estado)
 // ==========================================
+//
+// Se enganchan una sola vez al cargar; solo cambian de pantalla. Los handlers
+// que leen `estado` recién se disparan por clic, siempre después del login.
 
 function openTeamBuilder() {
     showScreen("teamScreen");
 }
 
-
-// ==========================================
-// ENGANCHE DE EVENTOS
-// ==========================================
-
-document
-    .getElementById("buildTeamButton")
+document.getElementById("buildTeamButton")
     .addEventListener("click", openTeamBuilder);
 
-document
-    .getElementById("collectionBuildTeamButton")
+document.getElementById("collectionBuildTeamButton")
     .addEventListener("click", openTeamBuilder);
-
 
 document.querySelectorAll(".nav-button").forEach(button => {
     button.addEventListener("click", () => {
@@ -43,71 +50,89 @@ document.querySelectorAll(".nav-button").forEach(button => {
     });
 });
 
-
-document
-    .getElementById("closePackButton")
-    .addEventListener("click", () => {
-        estado.currentPack = [];
-        showScreen("homeScreen");
-    });
-
-
-document
-    .getElementById("backFromPack")
+document.getElementById("closePackButton")
     .addEventListener("click", () => {
         showScreen("homeScreen");
     });
 
+document.getElementById("backFromPack")
+    .addEventListener("click", () => showScreen("homeScreen"));
 
-document
-    .getElementById("backFromCollection")
+document.getElementById("backFromCollection")
+    .addEventListener("click", () => showScreen("homeScreen"));
+
+document.getElementById("backFromTeam")
+    .addEventListener("click", () => showScreen("homeScreen"));
+
+// Cerrar sesión: observarSesion() reaccionará mostrando el login.
+document.getElementById("logoutButton")
+    .addEventListener("click", () => salir());
+
+// Aviso de reset de colección (Etapa 1), ahora solo relevante tras una
+// migración local en la que el dataset había cambiado.
+document.getElementById("datasetNoticeClose")
     .addEventListener("click", () => {
-        showScreen("homeScreen");
+        document.getElementById("datasetNotice").hidden = true;
     });
 
 
-document
-    .getElementById("backFromTeam")
-    .addEventListener("click", () => {
-        showScreen("homeScreen");
-    });
-
-
 // ==========================================
-// FILTROS
+// ARRANQUE DEL JUEGO (una sola vez por sesión de página)
 // ==========================================
+//
+// Engancha los listeners de las pantallas de juego. Se corre después de la
+// primera hidratación, para que nada intente leer el estado antes de tiempo.
 
-initPaquetes();
-initTienda();
-initFiltrosColeccion();
-initFiltrosEquipo();
-initTacticaEquipo();
-initPartido();
+let juegoArrancado = false;
 
+function arrancarJuegoUnaVez() {
+    if (juegoArrancado) return;
+    juegoArrancado = true;
 
-// ==========================================
-// AVISO DE RESET DE COLECCIÓN (Etapa 1)
-// ==========================================
-
-if (datasetReseteado) {
-    const aviso = document.getElementById("datasetNotice");
-    aviso.hidden = false;
-
-    document
-        .getElementById("datasetNoticeClose")
-        .addEventListener("click", () => {
-            aviso.hidden = true;
-        });
+    initPaquetes();
+    initTienda();
+    initFiltrosColeccion();
+    initFiltrosEquipo();
+    initTacticaEquipo();
+    initPartido();
 }
 
 
 // ==========================================
-// INICIO
+// SESIÓN
 // ==========================================
 
-// Al cargar, la colección ya pasó por migrar() (§52). La reguardamos una vez
-// para dejar persistida la versión migrada (campos §8 completos, schemaVersion).
-guardarPartida(estado);
+initLogin();
 
-updateHeader();
-renderTeam();
+observarSesion(async (user) => {
+    if (!user) {
+        limpiarEstado();
+        document.getElementById("userName").textContent = "";
+        mostrarLogin();
+        return;
+    }
+
+    // Hay sesión: cargamos la partida (o la creamos/migramos) y mostramos todo.
+    authOcupado(true);
+    try {
+        const { datasetReseteado } = await hidratarDesdeNube(user);
+
+        arrancarJuegoUnaVez();
+
+        document.getElementById("userName").textContent =
+            user.displayName || (user.email ? user.email.split("@")[0] : "Jugador");
+
+        updateHeader();
+        renderTeam();
+        showScreen("homeScreen");
+        ocultarAuth();
+
+        if (datasetReseteado) {
+            document.getElementById("datasetNotice").hidden = false;
+        }
+    } catch (error) {
+        console.error("[main] No se pudo cargar la partida:", error);
+        mostrarErrorAuth("No se pudo cargar tu partida. Reintentá.");
+        await salir();
+    }
+});

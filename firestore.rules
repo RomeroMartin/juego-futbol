@@ -1,0 +1,55 @@
+rules_version = '2';
+
+// ==========================================
+// REGLAS DE SEGURIDAD DE FIRESTORE (§51, §53) — Etapa 7
+// ==========================================
+//
+// Regla general (§53): el cliente puede LEER y PEDIR, nunca DECIDIR nada que no
+// sea suyo. Cada usuario solo accede a su propio subárbol users/{uid}.
+//
+// ⚠️ Etapa 7: la economía todavía corre en el cliente (§15.0), así que el dueño
+// SÍ puede escribir su colección, fichas e inventario. La Etapa 8 mueve toda la
+// entrega de valor a Cloud Functions y endurece estas reglas (allow write: if
+// false para colección/fichas/puntos; solo el Admin SDK escribirá).
+//
+// CÓMO INSTALARLAS: consola de Firebase → Firestore Database → pestaña "Reglas"
+// (Rules) → pegar TODO este contenido → Publicar.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Catálogo global de solo lectura (§51, §54). Se poblará en la Etapa 8, para
+    // que las Cloud Functions abran paquetes del lado del servidor. Cualquier
+    // usuario autenticado puede leerlo; nadie lo escribe desde el cliente.
+    match /players/{playerId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    match /clubs/{clubId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Datos del usuario: perfil, monedas, colección, equipos e historial.
+    // Solo el dueño (uid que coincide) puede leer y escribir lo suyo, incluidas
+    // todas sus subcolecciones.
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      match /{documento=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Torneos y amistosos (Etapas 9–10): todavía no se usan. Bloqueados por
+    // defecto hasta que existan sus reglas propias.
+    match /torneos/{documento=**} {
+      allow read, write: if false;
+    }
+
+    match /matches/{documento=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -2544,3 +2544,203 @@ main {
 .status-sugerencia-btn:hover {
     filter: brightness(1.1);
 }
+
+
+/* =====================================
+   LOGIN / REGISTRO (Etapa 7)
+===================================== */
+
+.auth-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background:
+        radial-gradient(circle at 50% 0%, #10261b 0%, var(--background) 60%);
+}
+
+.auth-cargando {
+    text-align: center;
+    color: var(--muted);
+}
+
+.auth-spinner {
+    width: 44px;
+    height: 44px;
+    margin: 0 auto 16px;
+    border: 4px solid var(--surface-light);
+    border-top-color: var(--green);
+    border-radius: 50%;
+    animation: auth-giro 0.9s linear infinite;
+}
+
+@keyframes auth-giro {
+    to { transform: rotate(360deg); }
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 380px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px 28px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+}
+
+.auth-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-size: 18px;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+}
+
+.auth-logo span {
+    font-size: 26px;
+}
+
+.auth-sub {
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.5;
+    margin-bottom: 22px;
+}
+
+.auth-tabs {
+    display: flex;
+    gap: 6px;
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px;
+    margin-bottom: 22px;
+}
+
+.auth-tab {
+    flex: 1;
+    padding: 10px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    border-radius: 7px;
+    transition: 0.15s;
+}
+
+.auth-tab.active {
+    background: var(--surface-light);
+    color: var(--white);
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.auth-campo {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.auth-campo label {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+}
+
+.auth-campo input {
+    width: 100%;
+    padding: 12px 14px;
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--white);
+    font-size: 14px;
+    transition: border-color 0.15s;
+}
+
+.auth-campo input:focus {
+    outline: none;
+    border-color: var(--green);
+}
+
+.auth-campo input:disabled {
+    opacity: 0.6;
+}
+
+.auth-submit {
+    width: 100%;
+    margin-top: 6px;
+}
+
+.auth-submit.procesando {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.auth-sep {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 20px 0;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.auth-sep::before,
+.auth-sep::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+}
+
+.auth-google {
+    display: block;
+    width: 100%;
+    margin: 0;
+}
+
+.auth-error {
+    margin-top: 16px;
+    padding: 10px 12px;
+    background: rgba(220, 60, 60, 0.12);
+    border: 1px solid rgba(220, 60, 60, 0.4);
+    border-radius: 8px;
+    color: #ff9b9b;
+    font-size: 13px;
+    text-align: center;
+}
+
+
+/* Nombre de usuario y botón de salir en el header */
+
+.header-user {
+    color: var(--white);
+    font-weight: 700;
+}
+
+.logout-button {
+    background: var(--surface-light);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 6px 14px;
+    font-size: 12px;
+    transition: 0.15s;
+}
+
+.logout-button:hover {
+    border-color: var(--green);
+    color: var(--white);
+}
