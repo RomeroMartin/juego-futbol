@@ -3,8 +3,7 @@
 // ==========================================
 
 import { estado } from "../core/estado.js";
-import { guardarPartida } from "../core/nube.js";
-import { venderRepetido } from "../core/economia.js";
+import { venderRepetidoNube } from "../core/nube.js";
 import { ECONOMIA } from "../config/economia.js";
 import { createPlayerCard } from "./componentes.js";
 import { updateHeader } from "./navegacion.js";
@@ -78,15 +77,25 @@ export function renderCollection() {
 // VENDER UN REPETIDO
 // ==========================================
 
-function vender(playerId) {
-    const r = venderRepetido(estado.usuario, estado.collection, playerId);
-    if (!r.ok) {
-        alert(r.error);
-        return;
+let vendiendo = false;
+
+async function vender(playerId) {
+    if (vendiendo) return;
+    vendiendo = true;
+    try {
+        // 🔴 Etapa 8: la venta (que otorga Fichas) la hace el servidor (§50.1).
+        const r = await venderRepetidoNube(playerId);
+        estado.usuario.monedas.fichas = r.fichas;
+        const item = estado.collection.find(e => e.player.id === r.playerId);
+        if (item) item.quantity = r.quantity;
+
+        updateHeader();
+        renderCollection();
+    } catch (e) {
+        alert(e?.message || "No se pudo vender el jugador.");
+    } finally {
+        vendiendo = false;
     }
-    guardarPartida(estado);
-    updateHeader();
-    renderCollection();
 }
 
 

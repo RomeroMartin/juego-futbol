@@ -152,3 +152,37 @@ users/{uid}/collection/{playerId} { playerId, quantity, obtenidoEn }
 users/{uid}/teams/actual          formación + XI (ids) + mentalidades
 users/{uid}/historial/{id}        resumen de cada partido
 ```
+
+## Cloud Functions (Etapa 8) — requiere plan Blaze
+
+Desde la Etapa 8, **todo lo que otorga valor** (abrir/comprar/vender paquetes,
+Fichas, resultados de partido) corre en **Cloud Functions** (`functions/`), no en
+el navegador. El cliente pide; el servidor decide y escribe. Las reglas de
+Firestore bloquean que el cliente escriba colección, fichas, puntos e inventario.
+
+- El backend es Node.js (`functions/`, con su propio `package.json` y `npm`).
+  **Esto no cambia el frontend**, que sigue siendo vanilla sin build.
+- Requiere el **plan Blaze** (Cloud Functions no corre en Spark). Para 10 amigos
+  el uso cae dentro de la capa gratuita; conviene poner una alerta de presupuesto.
+
+### Deploy (todo junto)
+
+Con el plan Blaze activo, un solo comando sube **hosting + reglas + functions**:
+
+```bash
+firebase deploy
+```
+
+- Solo el juego (sin tocar backend):   `firebase deploy --only hosting`
+- Solo las funciones y reglas:          `firebase deploy --only functions,firestore`
+
+El **primer** deploy de functions habilita un par de APIs de Google Cloud (es
+automático) y puede tardar unos minutos.
+
+### Las funciones
+
+```
+functions/index.js    inicializarUsuario · abrirPaquete · comprarPaquete ·
+                       venderRepetido · registrarPartidoIA
+functions/juego/       copia de la lógica pura (economía, motor, verificación)
+```
