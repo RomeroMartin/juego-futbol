@@ -24,6 +24,95 @@
 
 
     <!-- =====================================
+         OVERLAY DE LOGIN / REGISTRO (Etapa 7)
+         Cubre toda la app hasta que hay sesión. Arranca mostrando el spinner
+         de carga; main.js decide si mostrar el formulario o entrar al juego.
+    ====================================== -->
+
+    <div id="authOverlay" class="auth-overlay">
+
+        <!-- Spinner mientras Firebase resuelve la sesión / carga la partida. -->
+        <div id="authCargando" class="auth-cargando">
+            <div class="auth-spinner"></div>
+            <p>Cargando tu partida…</p>
+        </div>
+
+
+        <!-- Formulario (oculto hasta que se sabe que no hay sesión). -->
+        <div id="authCard" class="auth-card" hidden>
+
+            <div class="auth-logo">
+                <span>⚽</span>
+                <strong>FÚTBOL FIGURITAS</strong>
+            </div>
+
+            <p class="auth-sub">
+                Entrá para jugar y guardar tu progreso en la nube.
+            </p>
+
+            <div class="auth-tabs">
+                <button id="authTabLogin" type="button" class="auth-tab active">
+                    Ingresar
+                </button>
+                <button id="authTabRegister" type="button" class="auth-tab">
+                    Crear cuenta
+                </button>
+            </div>
+
+            <form id="authForm" class="auth-form" novalidate>
+
+                <div id="authNombreCampo" class="auth-campo" hidden>
+                    <label for="authNombre">Nombre</label>
+                    <input
+                        id="authNombre"
+                        type="text"
+                        autocomplete="name"
+                        placeholder="Cómo te ven tus amigos"
+                    >
+                </div>
+
+                <div class="auth-campo">
+                    <label for="authEmail">Email</label>
+                    <input
+                        id="authEmail"
+                        type="email"
+                        autocomplete="email"
+                        placeholder="tu@email.com"
+                        required
+                    >
+                </div>
+
+                <div class="auth-campo">
+                    <label for="authPassword">Contraseña</label>
+                    <input
+                        id="authPassword"
+                        type="password"
+                        autocomplete="current-password"
+                        placeholder="Mínimo 6 caracteres"
+                        required
+                    >
+                </div>
+
+                <button id="authSubmit" type="submit" class="main-button auth-submit">
+                    INGRESAR
+                </button>
+
+            </form>
+
+            <div class="auth-sep"><span>o</span></div>
+
+            <button id="authGoogle" type="button" class="secondary-button auth-google">
+                Continuar con Google
+            </button>
+
+            <p id="authError" class="auth-error" hidden></p>
+
+        </div>
+
+    </div>
+
+
+    <!-- =====================================
          HEADER
     ====================================== -->
 
@@ -57,6 +146,12 @@
             <span id="packCount">
                 0 paquetes
             </span>
+
+            <span id="userName" class="header-user"></span>
+
+            <button id="logoutButton" class="logout-button">
+                Salir
+            </button>
 
         </div>
 

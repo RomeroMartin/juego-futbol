@@ -7,7 +7,7 @@
 // apertura y revelar las cartas.
 
 import { estado, getTotalPaquetes } from "../core/estado.js";
-import { guardarPartida } from "../core/storage.js";
+import { guardarPartida } from "../core/nube.js";
 import { abrirPaquete, POSICIONES } from "../core/economia.js";
 import { ECONOMIA, etiquetaRareza } from "../config/economia.js";
 import { createPlayerCard, getPositionName } from "./componentes.js";

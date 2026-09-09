@@ -77,20 +77,25 @@ js/
     economia.js       Valores de economía y balance (§13, §14, §15.7)
     formaciones.js    Formaciones como dato (§17)
     dataset.js        Versión del plantel activo (para el reset de colección)
+    firebase.js       Claves e init de Firebase (Etapa 7) — única dependencia externa
   data/
     jugadores.js      Plantel real, GENERADO (modelo de §8, rareza §11.2)
   core/
-    estado.js         Estado en memoria de la partida (usuario, inventario, colección)
-    storage.js        Persistencia en localStorage + migración (§52, §44) + reset de dataset
+    estado.js         Estado en memoria + hidratación async tras el login
+    auth.js           Login/registro/Google/logout (Firebase Auth, Etapa 7)
+    nube.js           Persistencia en Firestore (§51) — reemplaza al guardado local
+    storage.js        Lectura de localStorage SOLO para migrar a la nube (§52, §44)
     economia.js       Economía pura y testeable (paquetes, pity, Fichas, puntos, tienda)
     calculos.js       Fórmulas de stats de equipo (§20)
   ui/
+    login.js          Pantalla de login/registro (Etapa 7)
     componentes.js    Carta de jugador y helpers de UI
     navegacion.js     Cambio de pantalla y header
     paquetes.js       Inventario, apertura y render de paquetes
     tienda.js         Tienda de paquetes por Fichas (§15.5)
     coleccion.js      Vista de colección + venta de repetidos
     equipo.js         Constructor del XI
+firestore.rules       Reglas de seguridad de Firestore (pegar en la consola)
 scripts/
   lib/dataset.js      Lógica compartida (parseo CSV, mapeo de posiciones, rareza)
   analizar-pool.js    Análisis del pool (histograma, rareza) — no es del juego
@@ -103,7 +108,47 @@ docs/                 Documento maestro y plan de etapas
 ESTADO.md             Estado de la última etapa completada
 ```
 
-## Persistencia
+## Firebase (Etapa 7)
 
-Los datos se guardan en `localStorage` del navegador. Firebase llega en la
-Etapa 7.
+Desde la Etapa 7 el juego usa **Firebase** (Authentication + Firestore) para el
+login y para guardar la partida en la nube. Es la **única dependencia externa**
+del proyecto y se carga como módulo ES desde el CDN de Google: sigue sin npm, sin
+build y sin instalar nada. Para 10 amigos alcanza y sobra con el **plan gratuito
+(Spark)**; el plan Blaze recién hace falta en la Etapa 8 (Cloud Functions).
+
+### Puesta a punto en la consola de Firebase (una sola vez)
+
+1. **Crear el proyecto** en https://console.firebase.google.com (podés desactivar
+   Google Analytics).
+2. **Registrar una app Web** (ícono `</>`). Copiar el objeto `firebaseConfig` y
+   pegarlo en `js/config/firebase.js` (ya está cargado el del proyecto actual).
+   ⚠️ La `apiKey` web **no es secreta**: es pública y va en el frontend. Lo que
+   protege los datos son las reglas de Firestore y el login.
+3. **Authentication → Sign-in method:** habilitar **Email/Password** y **Google**
+   (elegí un email de soporte).
+4. **Firestore Database → Create database** en modo *Production*, ubicación
+   `southamerica-east1` (São Paulo). ⚠️ La ubicación no se puede cambiar después.
+5. **Reglas de seguridad:** Firestore → pestaña *Rules* → pegar TODO el contenido
+   de [`firestore.rules`](firestore.rules) → *Publicar*.
+
+Para probar en `localhost` no hace falta nada más: ese dominio ya viene
+autorizado para el login de Google. Al publicar el juego con Firebase Hosting,
+agregá el dominio en Authentication → Settings → Authorized domains.
+
+### Cómo se guardan los datos
+
+- **Cada usuario ve solo lo suyo** (reglas de `firestore.rules`).
+- La colección guarda solo el **id** del jugador y la cantidad; el jugador
+  completo se rehidrata desde el catálogo local (§54). En el equipo **no** se
+  guardan stats calculadas (§51.1): se recalculan siempre.
+- La **primera vez** que entrás con tu cuenta, si tenías una partida vieja en
+  `localStorage` (de antes de la Etapa 7), se migra automáticamente a la nube.
+
+### Estructura en Firestore (§51)
+
+```
+users/{uid}                       perfil + monedas + pity + inventario de sobres
+users/{uid}/collection/{playerId} { playerId, quantity, obtenidoEn }
+users/{uid}/teams/actual          formación + XI (ids) + mentalidades
+users/{uid}/historial/{id}        resumen de cada partido
+```

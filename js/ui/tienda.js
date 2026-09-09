@@ -7,7 +7,7 @@
 // inventario y se abre desde el home (el POSICIONAL elige posición al abrirse).
 
 import { estado } from "../core/estado.js";
-import { guardarPartida } from "../core/storage.js";
+import { guardarPartida } from "../core/nube.js";
 import { comprarPaquete } from "../core/economia.js";
 import { ECONOMIA } from "../config/economia.js";
 import { updateHeader, showScreen } from "./navegacion.js";

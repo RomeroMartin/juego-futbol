@@ -2,8 +2,8 @@
 // UI DEL PARTIDO vs IA (§29, §30, §31)
 // ==========================================
 
-import { estado } from "../core/estado.js";
-import { agregarAlHistorial, cargarHistorial, guardarPartida } from "../core/storage.js";
+import { estado, agregarAlHistorial, cargarHistorial } from "../core/estado.js";
+import { guardarPartida } from "../core/nube.js";
 import { registrarResultadoEconomia, fechaHoy } from "../core/economia.js";
 import { calcularValoracion } from "../core/formulas.js";
 import { OFFSET_DIFICULTAD } from "../core/rivalIA.js";

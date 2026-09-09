@@ -32,9 +32,6 @@ const CLAVE_DATASET   = "futbolFiguritasDatasetVersion";
 const CLAVE_HISTORIAL = "futbolFiguritasHistorial";
 const CLAVE_USUARIO   = "futbolFiguritasUsuario";   // Etapa 6: modelo de usuario (§44)
 
-// Máximo de partidos guardados en el historial (se recorta el más viejo).
-const MAX_HISTORIAL = 50;
-
 
 // ==========================================
 // VERSIONADO DE DATOS (§52)
@@ -152,20 +149,14 @@ export function sincronizarDataset() {
 
 
 // ==========================================
-// HISTORIAL DE PARTIDOS (Etapa 3)
+// HISTORIAL DE PARTIDOS (lectura local, solo migración)
 // ==========================================
+//
+// Etapa 7: el historial vivo pasó a Firestore (subcolección) y a estado.js. Esta
+// lectura local queda SOLO como fuente de la migración desde localStorage.
 
-export function cargarHistorial() {
+function cargarHistorialLocal() {
     return JSON.parse(localStorage.getItem(CLAVE_HISTORIAL)) || [];
-}
-
-// Agrega un partido al frente del historial (más reciente primero) y recorta.
-export function agregarAlHistorial(registro) {
-    const historial = cargarHistorial();
-    historial.unshift(registro);
-    if (historial.length > MAX_HISTORIAL) historial.length = MAX_HISTORIAL;
-    localStorage.setItem(CLAVE_HISTORIAL, JSON.stringify(historial));
-    return historial;
 }
 
 
@@ -311,35 +302,52 @@ export function cargarEquipo() {
 
 
 // ==========================================
-// GUARDADO
+// MIGRACIÓN localStorage → FIRESTORE (Etapa 7)
 // ==========================================
+//
+// Etapa 7: el guardado pasó a Firestore (core/nube.js). localStorage ya no se
+// escribe; queda como ORIGEN de una migración única. La primera vez que un
+// usuario entra con su cuenta y NO tiene datos en la nube, si había una partida
+// local se sube a Firestore (una sola vez) y se marca como migrada.
 
-export function guardarPartida(estado) {
-    localStorage.setItem(
-        CLAVE_COLECCION,
-        JSON.stringify(estado.collection)
-    );
+const CLAVE_MIGRADO = "futbolFiguritasMigradoNube";
 
-    // Inventario de paquetes por tipo (§15.5) y modelo de usuario (§44).
-    localStorage.setItem(
-        CLAVE_PAQUETES,
-        JSON.stringify(estado.paquetes)
-    );
+// Lee la partida completa guardada en localStorage y la devuelve en el mismo
+// formato que usa `estado`. La colección viene rehidratada (jugador completo).
+export function leerPartidaLocal() {
+    const usuario = cargarUsuario();
+    const inventario = cargarInventario();
+    const equipo = cargarEquipo();
+    const collection = cargarColeccion();
+    const historial = cargarHistorialLocal();
 
-    localStorage.setItem(
-        CLAVE_USUARIO,
-        JSON.stringify(estado.usuario)
-    );
+    return {
+        usuario,
+        paquetes: inventario,
+        collection,
+        formacion: equipo.formacion,
+        team: equipo.team,
+        mentalidadOfensiva: equipo.mentalidadOfensiva,
+        mentalidadDefensiva: equipo.mentalidadDefensiva,
+        historial
+    };
+}
 
-    // Se persiste el equipo COMPLETO: formación, slots y mentalidades (§17, §19).
-    localStorage.setItem(
-        CLAVE_EQUIPO,
-        JSON.stringify({
-            schemaVersion: SCHEMA_VERSION_ACTUAL,
-            formacion: estado.formacion,
-            team: estado.team,
-            mentalidadOfensiva: estado.mentalidadOfensiva,
-            mentalidadDefensiva: estado.mentalidadDefensiva
-        })
-    );
+// ¿Hay una partida local con datos reales que valga la pena migrar? (No basta
+// con que exista el modelo de usuario por defecto: tiene que haber colección,
+// paquetes o historial.)
+export function hayDatosLocales() {
+    const tienePaquetes = localStorage.getItem(CLAVE_PAQUETES) !== null;
+    const tieneColeccion = cargarColeccion().length > 0;
+    const tieneHistorial = cargarHistorialLocal().length > 0;
+    return tienePaquetes || tieneColeccion || tieneHistorial;
+}
+
+// La migración local es de una sola vez por navegador.
+export function yaMigrado() {
+    return localStorage.getItem(CLAVE_MIGRADO) === "true";
+}
+
+export function marcarMigrado() {
+    localStorage.setItem(CLAVE_MIGRADO, "true");
 }
