@@ -7,8 +7,7 @@
 // inventario y se abre desde el home (el POSICIONAL elige posición al abrirse).
 
 import { estado } from "../core/estado.js";
-import { guardarPartida } from "../core/nube.js";
-import { comprarPaquete } from "../core/economia.js";
+import { comprarPaqueteNube } from "../core/nube.js";
 import { ECONOMIA } from "../config/economia.js";
 import { updateHeader, showScreen } from "./navegacion.js";
 import { renderInventario } from "./paquetes.js";
@@ -57,19 +56,26 @@ export function renderTienda() {
 }
 
 
-function comprar(tipo) {
-    const r = comprarPaquete(estado.usuario, tipo);
-    if (!r.ok) {
-        alert(r.error);
-        return;
-    }
-    // El paquete comprado va al inventario; se abre desde el home.
-    estado.paquetes[tipo] = (estado.paquetes[tipo] || 0) + 1;
+let comprando = false;
 
-    guardarPartida(estado);
-    updateHeader();
-    renderInventario();
-    renderTienda();
+async function comprar(tipo) {
+    if (comprando) return;
+    comprando = true;
+    try {
+        // 🔴 Etapa 8: el descuento de Fichas y el alta del sobre los hace el
+        // servidor (§50.1). El cliente aplica los saldos que devuelve.
+        const r = await comprarPaqueteNube(tipo);
+        estado.usuario.monedas.fichas = r.fichas;
+        estado.paquetes = r.paquetes;
+
+        updateHeader();
+        renderInventario();
+        renderTienda();
+    } catch (e) {
+        alert(e?.message || "No se pudo comprar el paquete.");
+    } finally {
+        comprando = false;
+    }
 }
 
 

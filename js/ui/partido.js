@@ -3,8 +3,7 @@
 // ==========================================
 
 import { estado, agregarAlHistorial, cargarHistorial } from "../core/estado.js";
-import { guardarPartida } from "../core/nube.js";
-import { registrarResultadoEconomia, fechaHoy } from "../core/economia.js";
+import { guardarPartida, registrarPartidoNube } from "../core/nube.js";
 import { calcularValoracion } from "../core/formulas.js";
 import { OFFSET_DIFICULTAD } from "../core/rivalIA.js";
 import { prepararPartido, resolverPartido } from "../core/partido.js";
@@ -174,24 +173,45 @@ export function renderComparacion(prep) {
 // COMENZAR PARTIDO
 // ==========================================
 
-function comenzarPartido() {
-    if (!partidoPreparado) return;
+let registrando = false;
 
+async function comenzarPartido() {
+    if (!partidoPreparado || registrando) return;
+
+    const boton = document.getElementById("startMatchButton");
+    registrando = true;
+    if (boton) { boton.disabled = true; boton.textContent = "SIMULANDO…"; }
+
+    // El cliente simula (para el relato y el marcador). El SERVIDOR re-verifica
+    // ese mismo partido por semilla (§53.1) y recién ahí otorga las Fichas
+    // (§15.4). Vs IA nunca hay puntos ni sobres (§15.0/§15.3).
     const registro = resolverPartido(partidoPreparado);
-    agregarAlHistorial(registro);
+    let eco = null;
 
-    // 🔴 §15.0/§15.3: los partidos vs IA otorgan FICHAS (§15.4) pero NUNCA sobres
-    // ni puntos. registrarResultadoEconomia lo garantiza (tipo "IA" → 0 puntos).
-    const eco = registrarResultadoEconomia(estado.usuario, "IA", registro.resultado, fechaHoy());
-    if (eco.packsPremiumOtorgados > 0) {
-        estado.paquetes.PREMIUM += eco.packsPremiumOtorgados;   // no ocurre vs IA (0 puntos)
+    try {
+        const r = await registrarPartidoNube(registro);
+        // Saldos que devuelve el servidor (fichas, pity, etc.).
+        estado.usuario = { ...estado.usuario, ...r.usuario };
+        estado.usuario.monedas = r.usuario.monedas;
+        estado.paquetes = r.paquetes;
+        eco = r.eco;
+        agregarAlHistorial(registro);   // en memoria; el servidor ya lo persistió.
+    } catch (e) {
+        alert(
+            (e?.message || "No se pudieron registrar las Fichas.") +
+            " El resultado igual se muestra, pero no sumaste Fichas."
+        );
     }
-    guardarPartida(estado);
-    updateHeader();
 
     ultimaDificultad = registro.dificultad;
     ultimoRegistro = registro;
     ultimoEco = eco;
+
+    updateHeader();
+    guardarPartida(estado);   // persiste el equipo (lo único que escribe el cliente).
+
+    registrando = false;
+    if (boton) { boton.disabled = false; boton.textContent = "COMENZAR PARTIDO"; }
 
     // Relato progresivo antes del resultado.
     reproducirRelato(generarRelato(registro));

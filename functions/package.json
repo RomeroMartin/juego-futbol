@@ -1,0 +1,14 @@
+{
+  "name": "futbol-figuritas-functions",
+  "description": "Cloud Functions de Fútbol Figuritas (Etapa 8): toda la entrega de valor corre acá, nunca en el cliente (§50.1, §53).",
+  "type": "module",
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.0.0",
+    "firebase-functions": "^6.0.0"
+  },
+  "private": true
+}

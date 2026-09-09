@@ -1,137 +1,83 @@
-# ESTADO — Después de la Etapa 7 (Firebase: auth + migración) ☁️
+# ESTADO — Después de la Etapa 8 (Cloud Functions) 🔒
 
-> Etapa del plan completada: **7**. Base: Etapas 0–6 ya en `main`.
-> El juego ahora tiene login y guarda la partida en la nube (Firestore). Sigue
-> corriendo con Live Server / servidor estático, sin npm ni build. La única
-> dependencia externa nueva es el SDK de Firebase, cargado como módulo ES desde
-> el CDN de gstatic (permitido a partir de esta etapa, ver CLAUDE.md).
+> Etapa del plan completada: **8**. Base: Etapas 0–7 ya en `main`.
+> El cliente ya NO decide nada que otorgue valor: abrir/comprar/vender paquetes,
+> otorgar Fichas y registrar partidos corren en **Cloud Functions** (plan Blaze).
+> Las reglas de Firestore bloquean que el cliente escriba colección, fichas,
+> puntos e inventario. El frontend sigue siendo vanilla; el backend usa Node+npm
+> (permitido, es código de servidor).
 
 ## 1. Qué se implementó
 
-- **Firebase Authentication**: email/password y Google. El juego queda detrás de
-  un overlay de login; sin sesión no se entra. Botón "Salir" en el header.
-- **Firestore como almacén de la partida** (reemplaza a `localStorage`), con la
-  estructura de §51:
-  - `users/{uid}` → perfil (§44) + monedas + contadores de pity + inventario de sobres.
-  - `users/{uid}/collection/{playerId}` → `{ playerId, quantity, obtenidoEn }`.
-  - `users/{uid}/teams/actual` → formación + XI (ids) + mentalidades.
-  - `users/{uid}/historial/{id}` → resumen de cada partido.
-- **Migración automática y silenciosa `localStorage` → Firestore** en el primer
-  login de cada navegador: si había una partida vieja (pre-Etapa 7), se sube una
-  sola vez y se marca como migrada (`futbolFiguritasMigradoNube`).
-- **Reglas de seguridad** (`firestore.rules`): cada usuario lee/escribe **solo lo
-  suyo**; catálogo (`players`/`clubs`) de solo lectura; `torneos`/`matches`
-  bloqueados hasta las Etapas 9–10.
-- **Separación catálogo/inventario (§54)** llevada a la nube: la colección guarda
-  solo el `playerId`; el jugador completo se rehidrata desde el catálogo local
-  (`data/jugadores.js`) al leer. **No se guardan stats calculadas** (§51.1).
+- **5 Cloud Functions** (`onCall`, en `functions/index.js`):
+  - `inicializarUsuario` — crea la cuenta con los **5 sobres de bienvenida** (§13.1). Idempotente.
+  - `abrirPaquete` — el **servidor decide** las cartas (rareza, pity, garantías) y las suma a la colección. Transacción.
+  - `comprarPaquete` — descuenta Fichas y suma el sobre (§15.5).
+  - `venderRepetido` — suma Fichas por un repetido (§15.4).
+  - `registrarPartidoIA` — **re-verifica el partido por semilla (§53.1)**: re-simula con la misma semilla y solo otorga Fichas si el marcador coincide. Verifica también que el usuario **posea** los jugadores del XI. Vs IA: Fichas sí, **puntos/sobres nunca** (§15.0/§15.3). Escribe el historial.
+- **Reglas de Firestore endurecidas** (§53): el cliente **solo lee** su documento de usuario, su colección y su historial; solo puede **escribir su equipo** (formación/XI/mentalidades, que no da ventaja). Todo lo demás lo escribe el Admin SDK (las Functions, que ignoran las reglas).
+- **Cliente reconvertido**: abrir/comprar/vender/registrar-partido pasaron de cálculo local a **llamadas al servidor** (`httpsCallable`) que esperan respuesta y aplican los saldos que devuelve el servidor.
+- **Catálogo del lado servidor**: el dataset y la lógica pura (economía, motor, fórmulas, PRNG) están **empaquetados dentro de `functions/`** (no se subieron a Firestore `players/`): la Function los tiene localmente, sin lecturas extra.
 
 ## 2. Archivos y qué hace cada uno
 
-Nuevos:
+Nuevos (backend):
 
 | Archivo | Qué hace |
 |---|---|
-| `js/config/firebase.js` | `firebaseConfig` + init. Exporta `app`, `auth`, `db`. Acá van las claves del proyecto (la `apiKey` web es pública, no secreta). |
-| `js/core/auth.js` | Envuelve Firebase Auth: `observarSesion`, `registrarConEmail`, `entrarConEmail`, `entrarConGoogle`, `salir`, `usuarioActual`, `mensajeDeError` (códigos → español). |
-| `js/core/nube.js` | **Capa de datos Firestore.** `leerPartida(uid)`, `escribirPartidaCompleta(uid, estado, perfil)` (creación/migración), `guardarPartida(estado)` (incremental, lo que llama la UI), `agregarHistorialNube`, `reiniciarCacheNube`. Escritura por **delta** de la colección + guardados **encolados**. |
-| `js/ui/login.js` | Pantalla de login/registro (pestañas, Google, estados de carga y error). No carga datos: eso lo dispara `main.js`. |
-| `firestore.rules` | Reglas de seguridad para pegar en la consola de Firebase. |
+| `functions/package.json` | Proyecto Node del backend (ESM, Node 20, `firebase-functions` + `firebase-admin`). Único lugar con npm. |
+| `functions/index.js` | Las 5 Cloud Functions. Transacciones, validaciones y `HttpsError` con mensajes en español. |
+| `functions/juego/` | **Copia de la lógica pura del cliente** (config, data/jugadores, core/{prng,formulas,motor,economia}) + `core/verificar.js` (re-verificación §53.1). Misma lógica ya testeada; solo cambia quién la corre. |
 
 Modificados:
 
 | Archivo | Cambio |
 |---|---|
-| `js/core/estado.js` | `estado` ya NO se carga al importar: arranca vacío y se **hidrata async** tras el login (`hidratarDesdeNube(user)`), mutando SIEMPRE el mismo objeto. Nuevos: `limpiarEstado()` (logout), `agregarAlHistorial`/`cargarHistorial` (historial en memoria + persistencia en la nube). |
-| `js/core/storage.js` | Deja de ser el almacén: `localStorage` queda SOLO como origen de la migración. Se quitaron `guardarPartida` y `agregarAlHistorial`. Nuevos: `leerPartidaLocal`, `hayDatosLocales`, `yaMigrado`, `marcarMigrado`. Se mantienen `migrar()`, `sincronizarDataset()`, `equipoVacio()` y los `cargar*` (usados por la migración). |
-| `js/main.js` | Arranque **asíncrono** con gate de login: `observarSesion` → si hay usuario, hidrata y muestra el juego; si no, muestra el login. Los `initX()` de juego corren una sola vez tras la primera hidratación. |
-| `js/ui/partido.js` | `agregarAlHistorial`/`cargarHistorial` ahora vienen de `estado.js`; `guardarPartida` de `nube.js`. |
-| `js/ui/{tienda,paquetes,coleccion,equipo}.js` | `guardarPartida` reapuntado de `storage.js` → `nube.js` (sin otros cambios). |
-| `index.html` | Overlay de login (`#authOverlay`) + nombre de usuario y botón "Salir" en el header. |
-| `css/estilos.css` | Estilos del login (overlay, card, tabs, inputs, spinner, error) y del botón de salir, con la paleta verde existente. |
-| `README.md` | Sección de puesta a punto de Firebase (plan gratuito) + estructura actualizada. |
+| `js/config/firebase.js` | Exporta `functions = getFunctions(app)` (región por defecto us-central1). |
+| `js/core/nube.js` | `guardarPartida` ahora escribe **solo el equipo** (`teams/actual`). Se quitaron la escritura del doc de usuario/colección y el historial cliente. Se agregaron los wrappers: `inicializarUsuarioNube`, `abrirPaqueteNube`, `comprarPaqueteNube`, `venderRepetidoNube`, `registrarPartidoNube`, y `jugadorDeCatalogo(id)` para rehidratar respuestas. |
+| `js/core/estado.js` | `hidratarDesdeNube`: si el usuario es nuevo, llama a `inicializarUsuario` (servidor) y relee. **Se retiró la migración desde localStorage** (las reglas ya no dejan al cliente escribir eso). `agregarAlHistorial` es solo en memoria (el servidor persiste). |
+| `js/ui/paquetes.js` | Abrir = `abrirPaqueteNube` (async); aplica `paquetes` + `cambios` + `cartas` que devuelve el servidor. |
+| `js/ui/tienda.js` | Comprar = `comprarPaqueteNube` (async). |
+| `js/ui/coleccion.js` | Vender = `venderRepetidoNube` (async). |
+| `js/ui/partido.js` | Tras simular local (para el relato), llama a `registrarPartidoNube` y aplica los saldos; el botón se deshabilita mientras responde. |
+| `firestore.rules` | Endurecidas (ver arriba). Se despliegan con `firebase deploy`. |
+| `firebase.json` | Nueva sección `functions` (`source: "functions"`) y `functions/**` agregado al ignore de hosting (no publicar el backend). |
+| `README.md` | Deploy actualizado: `firebase deploy` sube hosting + reglas + functions. |
 
 ## 3. Decisiones técnicas que conviene recordar
 
-- **🔑 El catálogo (`players`/`clubs`) NO se subió a Firestore todavía.** El motor
-  de partido y la economía leen el plantel de forma **síncrona** desde
-  `data/jugadores.js`; moverlo a Firestore obligaría a reescribir el motor a
-  async sin beneficio en esta etapa, y el dataset es privado (§negocio). El seed
-  del catálogo a Firestore se hace en la **Etapa 8**, que es cuando las Cloud
-  Functions lo necesitan del lado del servidor para abrir paquetes. Las reglas ya
-  contemplan el catálogo (solo lectura) para no tener que tocarlas de nuevo.
-- **La economía sigue corriendo en el CLIENTE (§15.0).** Etapa 7 es auth +
-  persistencia; el cliente todavía se acredita fichas y abre paquetes con
-  `Math.random`. Por eso las reglas permiten al dueño **escribir** su colección y
-  fichas. La **Etapa 8** mueve eso a Cloud Functions y endurece las reglas
-  (`allow write: if false` para colección/fichas/puntos; solo el Admin SDK).
-- **`estado` es un singleton que se muta in-place, nunca se reasigna.** Todos los
-  módulos de UI importaron el objeto una vez; `hidratarDesdeNube`/`limpiarEstado`
-  reescriben sus propiedades para que sigan viendo los datos correctos sin
-  reimportar. Si en el futuro alguien hace `estado = ...`, rompe todo.
-- **`guardarPartida(estado)` es fire-and-forget y encolado.** La UI la llama sin
-  `await` (igual que antes). Internamente serializa los guardados (`cadenaGuardado`)
-  para que dos llamadas seguidas no se pisen, y escribe **solo el delta** de la
-  colección (las cartas cuya `quantity` cambió), más el doc de usuario y el de
-  equipo (chicos). `obtenidoEn` se fija una vez, al entrar la carta.
-- **`reiniciarCacheNube()` al cerrar/cambiar de sesión.** La caché del delta es
-  por navegador; sin reiniciarla, el delta de un usuario se filtraría al
-  siguiente que entre en la misma pestaña.
-- **Migración local:** se dispara solo si el usuario es nuevo en la nube, no migró
-  antes en ese navegador y hay datos locales reales (colección/paquetes/historial,
-  no solo el usuario por defecto). El primero que entra en un navegador "adopta"
-  la partida local; es el comportamiento esperado entre amigos.
-- **SDK de Firebase pineado a `10.12.2`** (regla de pinear versiones). Se importa
-  por URL de gstatic en `config/firebase.js`, `core/auth.js` y `core/nube.js`.
+- **🔑 Modelo de anti-trampa de partido = RE-VERIFICACIÓN (§53.1), no rival server-side.** El cliente genera el rival (con `Math.random`) y simula; manda el registro `{semilla, ambos equipos por id, marcador}`; el servidor **re-simula** con la misma semilla y solo paga si coincide. Probado: **200/200 partidos coinciden y un marcador mentido se rechaza**.
+  - **Limitación conocida (no la pide el doc):** como el cliente elige la composición del rival, un tramposo podría armarse un rival trivialmente débil y ganar honestamente para farmear Fichas. Vs IA es una canilla intencional (§15.0) y el doc solo exige rechazar *resultados falsos*, cosa que se cumple. Si algún día molesta, se endurece haciendo que el servidor genere el rival con semilla.
+- **El catálogo NO se subió a Firestore** (`players/`/`clubs/`): se empaquetó en `functions/juego/`. Es estático y privado; la Function lo tiene local. Las reglas de `players/` quedan por si en el futuro se sube.
+- **Lógica duplicada cliente ↔ servidor.** `functions/juego/` es una **copia** de `js/`. Si se cambia una fórmula, un valor de balance (`config/economia.js`) o el motor, **hay que actualizar las dos copias**. (Es el precio de no tener bundler; la alternativa era un paso de build, fuera del stack.)
+- **La migración localStorage→nube se retiró** (Etapa 7 la usó una vez). Un usuario nuevo se crea 100% en el servidor. Los que ya migraron en la Etapa 7 conservan sus datos en la nube.
+- **`guardarPartida` quedó solo para el equipo.** Cualquier intento del cliente de escribir colección/fichas es rechazado por reglas (a propósito).
+- **Región de las Functions:** us-central1 (default). El cliente usa `getFunctions(app)` sin región → coincide. Si algún día se mueven de región, hay que pasar la región en ambos lados.
 
-## 4. Cómo testear (criterio del plan, Etapa 7)
+## 4. Tests
 
-> Requiere haber hecho la puesta a punto de Firebase del README (auth + Firestore
-> + reglas publicadas). Servir con Live Server y abrir `localhost`.
+- **`reVerificar` (nuevo, §53.1):** 200 partidos jugados por el cliente re-verificados por el servidor → **200/200 coinciden**; marcador adulterado → **rechazado**. (script headless de esta sesión).
+- Tests de etapas previas: siguen **en verde** (`test-economia`, `test-formaciones-mentalidades`, `test-rival-ia`, `test-relato`). La economía server-side es la misma que valida `test-economia`.
+- **No se pudieron probar las Functions desplegadas desde el entorno de desarrollo** (requieren el proyecto y `firebase deploy`). Es esperable **una o dos rondas de deploy-y-revisar** hasta afinar (versiones de deps, permisos). Igual que con Firestore en la Etapa 7.
 
-1. **Crear cuenta** (email/password o Google) → arma un XI → jugá un partido.
-2. **Cerrar sesión y volver a entrar**: la colección, fichas, equipo e historial
-   siguen ahí.
-3. **Entrar desde otro navegador** con la misma cuenta: los datos están.
-4. **Aislamiento**: con la cuenta A logueada, intentar leer `users/{uid_de_B}`
-   desde la consola del navegador → la lectura falla (reglas de seguridad).
-5. **Migración**: en un navegador con una partida vieja en `localStorage`
-   (pre-Etapa 7), al crear/entrar por primera vez la partida aparece en la nube.
-
-Tests headless de etapas anteriores: siguen **en verde**
-(`test-economia`, `test-formaciones-mentalidades`, `test-rival-ia`, `test-relato`).
-No cubren Firebase (requiere navegador + proyecto real).
+### Cómo testear (criterio del plan, Etapa 8)
+1. Abrir un paquete → funciona normal (las cartas las decide el servidor).
+2. En la consola del navegador, intentar sumarse fichas a mano
+   (`setDoc(doc(db,'users',<uid>), {usuario:{monedas:{fichas:99999}}}, {merge:true})`)
+   → **la escritura se rechaza** (permiso denegado).
+3. Intentar agregarse un jugador a mano en `users/<uid>/collection` → **rechazado**.
+4. Jugar un partido vs IA → suma Fichas (verificadas), **0 puntos**.
 
 ## 5. Pendientes conocidos (no son de esta etapa)
 
-- **Seed del catálogo `players`/`clubs` a Firestore** → Etapa 8 (lo consumen las
-  Cloud Functions). Hoy el catálogo es local.
-- La entrega de valor (abrir paquete, fichas, puntos) sigue en el cliente →
-  Etapa 8 la mueve a Cloud Functions y bloquea la escritura del cliente.
-- **Firebase Hosting**: opcional. Para publicar online, agregar el dominio en
-  Authentication → Authorized domains.
-- `favicon.ico` sigue faltando (404 inofensivo, viene de antes).
+- **Torneos (Etapas 9 y 10):** creación, código de invitación, exclusividad con `reclamarJugador` (§38), fixture, tabla, premios, y el **sobre pre-partido de torneo** (§15.2). Las reglas de `torneos/` y `matches/` están **bloqueadas** (`allow write: if false`) hasta que existan sus Functions.
+- **Amistosos entre usuarios (§32):** Etapa 10.
+- Endurecer el rival vs IA server-side (limitación de §3, opcional).
 
-## 6. Advertencias para la próxima etapa (Etapa 8 — Cloud Functions)
+## 6. Advertencias para la próxima etapa (Etapa 9 — Torneos: armado)
 
-> ⚠️ **Decisión previa del creador:** activar el **plan Blaze** (§50.1). Cloud
-> Functions no corre en el plan gratuito.
-
-- La lógica que otorga valor ya está aislada en funciones **puras** de
-  `core/economia.js` (`abrirPaquete`, `registrarResultadoEconomia`,
-  `comprarPaquete`, `venderRepetido`). La Etapa 8 las mueve al servidor **sin
-  reescribir la lógica**, solo cambiando quién las ejecuta.
-- Para abrir paquetes del lado del servidor, la Function necesita el catálogo:
-  **ahí se sube `players`/`clubs` a Firestore** (o se empaqueta el dataset con la
-  Function). Recién entonces conviene hacer que el cliente lea el catálogo de la
-  nube, si se quiere.
-- **Endurecer `firestore.rules`**: cambiar el `allow write` del dueño sobre
-  `collection`, `monedas`/fichas y puntos a `if false`; esos campos pasan a
-  escribirse solo por Admin SDK. El resto (equipo, mentalidades) puede seguir
-  siendo escribible por el dueño.
-- El guardado incremental de `nube.js` da por sentado que el cliente manda la
-  colección entera en `estado.collection`. Cuando el servidor sea el dueño de la
-  colección, el cliente dejará de escribirla: revisar `guardarPartida` para que no
-  intente pisar lo que ahora controla la Function.
-- Verificación de partidos por semilla (§53.1): el registro de partido ya lleva
-  `semilla`; la Function puede re-simular y validar.
+- **La infraestructura ya está**: carpeta `functions/`, Admin SDK, patrón `onCall` + transacción, y la lógica de juego (economía/motor) server-side. La Etapa 9 agrega la Function `reclamarJugador` (§38, hay un ejemplo en el documento maestro) y las de crear/unirse a torneo.
+- **Reglas:** abrir el match de `torneos/{id}` — lectura para participantes, escritura solo Admin (como en el ejemplo del doc, §38/§51.2). Hoy están en `if false`.
+- **El sobre de torneo (§15.2)** reutiliza `abrirPaquete` pero con la condición de mínimo 4 participantes; conviene una Function específica que valide el torneo antes de otorgar.
+- **Duplicación cliente/servidor:** si Etapa 9 toca `config/` o el motor, recordar sincronizar `js/` y `functions/juego/`.
+- **Deploy:** `firebase deploy` ya sube hosting + reglas + functions juntos. El primer deploy de functions habilita APIs de Google Cloud (automático) y puede tardar unos minutos.

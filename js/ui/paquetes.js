@@ -7,9 +7,9 @@
 // apertura y revelar las cartas.
 
 import { estado, getTotalPaquetes } from "../core/estado.js";
-import { guardarPartida } from "../core/nube.js";
-import { abrirPaquete, POSICIONES } from "../core/economia.js";
-import { ECONOMIA, etiquetaRareza } from "../config/economia.js";
+import { abrirPaqueteNube, jugadorDeCatalogo } from "../core/nube.js";
+import { POSICIONES } from "../core/economia.js";
+import { etiquetaRareza } from "../config/economia.js";
 import { createPlayerCard, getPositionName } from "./componentes.js";
 import { showScreen, updateHeader } from "./navegacion.js";
 
@@ -28,6 +28,9 @@ const ORDEN_TIPOS = ["BASICO", "PREMIUM", "POSICIONAL"];
 
 // Meta de la última apertura (para los avisos de garantía en el revelado).
 let ultimaMeta = null;
+
+// Evita doble apertura mientras el servidor responde.
+let abriendo = false;
 
 
 // ==========================================
@@ -83,32 +86,44 @@ export function renderInventario() {
 // ABRIR UN PAQUETE
 // ==========================================
 
-function abrir(tipo, posicion) {
+async function abrir(tipo, posicion) {
+    if (abriendo) return;
     if ((estado.paquetes[tipo] || 0) <= 0) {
         alert("No te quedan paquetes de ese tipo.");
         return;
     }
-
-    const opciones = {};
-    if (tipo === "POSICIONAL") {
-        if (!POSICIONES.includes(posicion)) {
-            alert("Elegí una posición para el paquete posicional.");
-            return;
-        }
-        opciones.posicion = posicion;
+    if (tipo === "POSICIONAL" && !POSICIONES.includes(posicion)) {
+        alert("Elegí una posición para el paquete posicional.");
+        return;
     }
 
-    // La apertura muta usuario y colección; el descuento del inventario es acá.
-    const { cartas, meta } = abrirPaquete(estado.usuario, estado.collection, tipo, opciones);
-    estado.paquetes[tipo]--;
+    // 🔴 Etapa 8: el SERVIDOR decide qué te toca (§50.1). El cliente solo pide y
+    // aplica la respuesta.
+    abriendo = true;
+    try {
+        const r = await abrirPaqueteNube(tipo, tipo === "POSICIONAL" ? posicion : null);
 
-    estado.currentPack = cartas;
-    ultimaMeta = meta;
+        // Inventario nuevo y cartas afectadas, según lo que devolvió el servidor.
+        estado.paquetes = r.paquetes;
+        for (const { playerId, quantity } of r.cambios) {
+            const item = estado.collection.find(e => e.player.id === playerId);
+            if (item) item.quantity = quantity;
+            else estado.collection.push({ player: jugadorDeCatalogo(playerId), quantity });
+        }
 
-    guardarPartida(estado);
-    renderPack();
-    updateHeader();
-    showScreen("packScreen");
+        estado.currentPack = r.cartas
+            .map(id => jugadorDeCatalogo(id))
+            .filter(Boolean);
+        ultimaMeta = r.meta;
+
+        renderPack();
+        updateHeader();
+        showScreen("packScreen");
+    } catch (e) {
+        alert(e?.message || "No se pudo abrir el paquete. Probá de nuevo.");
+    } finally {
+        abriendo = false;
+    }
 }
 
 

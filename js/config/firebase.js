@@ -16,6 +16,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { initializeFirestore } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFunctions } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 
 
 // Configuración del proyecto (consola de Firebase → Configuración del proyecto).
@@ -47,3 +48,7 @@ export const db = initializeFirestore(app, {
     ignoreUndefinedProperties: true,
     experimentalForceLongPolling: true
 });
+
+// Cloud Functions (Etapa 8): toda la entrega de valor se pide acá. La región es
+// la de por defecto (us-central1), que es donde se despliegan las funciones.
+export const functions = getFunctions(app);

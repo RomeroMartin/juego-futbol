@@ -10,25 +10,15 @@
 // mutando SIEMPRE el mismo objeto `estado` (nunca se reasigna), para que los
 // módulos que lo importaron sigan viendo los datos nuevos.
 
-import {
-    equipoVacio,
-    sincronizarDataset,
-    leerPartidaLocal,
-    hayDatosLocales,
-    yaMigrado,
-    marcarMigrado
-} from "./storage.js";
+import { equipoVacio } from "./storage.js";
 import {
     usuarioNuevo,
     inventarioNuevo,
-    reclamarBienvenidaSiCorresponde,
     totalPaquetes
 } from "./economia.js";
 import {
     leerPartida,
-    escribirPartidaCompleta,
-    agregarHistorialNube,
-    reiniciarCacheNube
+    inicializarUsuarioNube
 } from "./nube.js";
 
 
@@ -59,51 +49,33 @@ export const estado = {
 // ==========================================
 //
 // - Si el usuario YA tiene datos en Firestore → se cargan.
-// - Si es nuevo en la nube:
-//     · si hay una partida local sin migrar → se migra (una sola vez) y se sube;
-//     · si no → se crea un usuario nuevo (con los 5 sobres de bienvenida, §13.1)
-//       y se sube.
+// - Si es nuevo → el SERVIDOR crea la cuenta con los 5 sobres de bienvenida
+//   (§13.1) vía Cloud Function `inicializarUsuario`, y después se relee.
 //
-// Devuelve { migradoDesdeLocal, datasetReseteado } para que la UI pueda avisar.
+// El cliente ya no crea ni migra datos: las reglas de Firestore (Etapa 8) le
+// prohíben escribir colección, fichas e inventario.
+//
+// Devuelve { datasetReseteado } por compatibilidad con el arranque (hoy siempre
+// false: la migración desde localStorage se retiró al blindar la escritura).
 export async function hidratarDesdeNube(user) {
     const uid = user.uid;
-    const nube = await leerPartida(uid);
+    let nube = await leerPartida(uid);
 
-    let migradoDesdeLocal = false;
-    let datasetReseteado = false;
-
-    if (nube.existe) {
-        aplicar(nube);
-        return { migradoDesdeLocal, datasetReseteado };
+    if (!nube.existe) {
+        // El servidor crea el documento con la bienvenida y volvemos a leer.
+        await inicializarUsuarioNube();
+        nube = await leerPartida(uid);
     }
 
-    // Usuario nuevo en la nube.
-    if (!yaMigrado() && hayDatosLocales()) {
-        // Antes de migrar, saneamos el local por si el dataset cambió (§10).
-        datasetReseteado = sincronizarDataset();
-        if (hayDatosLocales()) {
-            aplicar(leerPartidaLocal());
-            migradoDesdeLocal = true;
-        } else {
-            aplicar(nuevoJugador());
-        }
-    } else {
-        aplicar(nuevoJugador());
-    }
-
-    await escribirPartidaCompleta(uid, estado, construirPerfil(user));
-    marcarMigrado();
-
-    return { migradoDesdeLocal, datasetReseteado };
+    aplicar(nube);
+    return { datasetReseteado: false };
 }
 
 
 // Limpia el estado al cerrar sesión, para que nada del usuario anterior quede
 // visible ni se persista por error en la cuenta siguiente.
 export function limpiarEstado() {
-    reiniciarCacheNube();
-    aplicar(nuevoJugador(false));
-    estado.historial = [];
+    aplicar(estadoVacio());
 }
 
 
@@ -111,8 +83,7 @@ export function limpiarEstado() {
 // HELPERS DE HIDRATACIÓN
 // ==========================================
 
-// Vuelca los datos cargados sobre el objeto `estado` (mutación in-place). Acepta
-// tanto el formato de la nube (equipo anidado) como el local (campos planos).
+// Vuelca los datos cargados sobre el objeto `estado` (mutación in-place).
 function aplicar(datos) {
     estado.usuario = datos.usuario;
     estado.paquetes = datos.paquetes;
@@ -128,46 +99,29 @@ function aplicar(datos) {
     estado.currentPack = [];
 }
 
-// Datos de un jugador nuevo. Con `conBienvenida` acredita los 5 sobres (§13.1);
-// al limpiar el estado (logout) no hace falta.
-function nuevoJugador(conBienvenida = true) {
-    const usuario = usuarioNuevo();
-    const paquetes = inventarioNuevo();
-    if (conBienvenida) reclamarBienvenidaSiCorresponde(usuario, paquetes);
+// Estado vacío (sin sesión / logout). No trae bienvenida: eso lo da el servidor
+// al crear la cuenta.
+function estadoVacio() {
     const eq = equipoVacio();
     return {
-        usuario,
-        paquetes,
+        usuario: usuarioNuevo(),
+        paquetes: inventarioNuevo(),
         collection: [],
-        formacion: eq.formacion,
-        team: eq.team,
-        mentalidadOfensiva: eq.mentalidadOfensiva,
-        mentalidadDefensiva: eq.mentalidadDefensiva,
-        historial: []
-    };
-}
-
-// Perfil (§44) a partir del usuario de Firebase Auth.
-function construirPerfil(user) {
-    return {
-        nombre: user.displayName || (user.email ? user.email.split("@")[0] : "Jugador"),
-        email: user.email || null,
-        fotoPerfil: user.photoURL || null,
-        creadoEn: new Date().toISOString()
+        historial: [],
+        equipo: eq
     };
 }
 
 
 // ==========================================
-// HISTORIAL (en memoria + persistencia en la nube)
+// HISTORIAL (en memoria; el servidor lo persiste al registrar el partido)
 // ==========================================
 
-// Agrega un partido al frente del historial (más reciente primero), recorta y
-// lo persiste en Firestore. Reemplaza a la vieja función de storage.js.
+// Agrega un partido al frente del historial en memoria (más reciente primero) y
+// recorta. La persistencia la hace la Cloud Function `registrarPartidoIA`.
 export function agregarAlHistorial(registro) {
     estado.historial.unshift(registro);
     if (estado.historial.length > MAX_HISTORIAL) estado.historial.length = MAX_HISTORIAL;
-    agregarHistorialNube(registro);
     return estado.historial;
 }
 
