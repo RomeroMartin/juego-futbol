@@ -337,3 +337,168 @@ export const registrarPartidoIA = onCall(async (request) => {
 
     return salida;
 });
+
+
+// ==========================================
+// TORNEOS — creación / unión / apertura de armado (Etapa 9A, §35–§37)
+// ==========================================
+//
+// El cliente pide; el servidor crea y valida. Las reglas de Firestore dejan al
+// cliente LEER un torneo solo si es participante, y NUNCA escribirlo.
+
+// Código de invitación legible: sin caracteres ambiguos (I, O, 0, 1).
+const ALFABETO_CODIGO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+function generarCodigo() {
+    let s = "";
+    for (let i = 0; i < 6; i++) s += ALFABETO_CODIGO[Math.floor(Math.random() * ALFABETO_CODIGO.length)];
+    return s;
+}
+
+// Nombre visible del que llama (para mostrar participantes sin leer docs ajenos).
+function nombreDe(token) {
+    return token?.name || (token?.email ? token.email.split("@")[0] : "Jugador");
+}
+
+// Cuenta jugadores DISTINTOS por posición en la unión de las colecciones (§37).
+async function unionPorPosicion(participantes) {
+    const vistos = new Set();
+    const conteo = { POR: 0, DEF: 0, MED: 0, DEL: 0 };
+    for (const uid of participantes) {
+        const snap = await db.collection(`users/${uid}/collection`).get();
+        for (const d of snap.docs) {
+            const pid = d.data().playerId;
+            if (vistos.has(pid)) continue;
+            vistos.add(pid);
+            const pl = CATALOGO.get(pid);
+            if (pl && conteo[pl.position] !== undefined) conteo[pl.position]++;
+        }
+    }
+    return conteo;
+}
+
+
+// Crea un torneo en estado BORRADOR (juntando participantes). Devuelve el id y
+// el código de invitación para compartir.
+export const crearTorneo = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const nombre = (request.data?.nombre || "").trim().slice(0, 40) || "Torneo";
+    const formato = "LIGA";   // V1.0: solo liga (§40). ELIMINACION/GRUPOS: futuro.
+
+    // Código único (reintenta ante una colisión, muy improbable).
+    let codigo = null;
+    for (let i = 0; i < 8; i++) {
+        const c = generarCodigo();
+        const ex = await db.collection("torneos").where("codigoInvitacion", "==", c).limit(1).get();
+        if (ex.empty) { codigo = c; break; }
+    }
+    if (!codigo) throw new HttpsError("internal", "No se pudo generar un código. Probá de nuevo.");
+
+    const ref = db.collection("torneos").doc();
+    await ref.set({
+        schemaVersion: 3,
+        nombre,
+        codigoInvitacion: codigo,
+        creadorId: uid,
+        estado: "BORRADOR",              // BORRADOR | ARMADO | EN_CURSO | FINALIZADO
+        modoExclusividad: "RECLAMO",     // §36.1
+        formato,
+        minParticipantes: 4,             // §15.2 / §37
+        maxParticipantes: 8,
+        participantes: [uid],
+        nombres: { [uid]: nombreDe(request.auth.token) },
+        modoAvance: "MANUAL",
+        autoAvanceHoras: null,
+        forzadoPorInactividadDias: 5,
+        ultimoAvanceEn: null,
+        jugadoresReclamados: {},         // playerId → uid (Etapa 9B)
+        ventanaArmadoCierra: null,
+        fixture: [],
+        tabla: [],
+        creadoEn: ahoraISO()
+    });
+
+    return { torneoId: ref.id, codigoInvitacion: codigo };
+});
+
+
+// Une al usuario a un torneo por código (solo mientras está en BORRADOR).
+export const unirseTorneo = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const codigo = (request.data?.codigo || "").trim().toUpperCase();
+    if (!codigo) throw new HttpsError("invalid-argument", "Escribí un código de invitación.");
+
+    const q = await db.collection("torneos").where("codigoInvitacion", "==", codigo).limit(1).get();
+    if (q.empty) throw new HttpsError("not-found", "No existe un torneo con ese código.");
+    const ref = q.docs[0].ref;
+
+    return db.runTransaction(async (tx) => {
+        const s = await tx.get(ref);
+        const t = s.data();
+        if (t.participantes.includes(uid)) return { torneoId: ref.id, yaUnido: true };
+        if (t.estado !== "BORRADOR") {
+            throw new HttpsError("failed-precondition", "Ese torneo ya cerró las inscripciones.");
+        }
+        if (t.participantes.length >= t.maxParticipantes) {
+            throw new HttpsError("failed-precondition", "El torneo está lleno.");
+        }
+        tx.update(ref, {
+            participantes: [...t.participantes, uid],
+            [`nombres.${uid}`]: nombreDe(request.auth.token)
+        });
+        return { torneoId: ref.id };
+    });
+});
+
+
+// El creador abre la ventana de armado: valida mínimo de participantes y pool
+// mínimo (§37). Si no alcanza, devuelve { ok:false, validacion } para que la UI
+// ofrezca las salidas de §37. Si alcanza, pasa a ARMADO con ventana de 24hs.
+export const abrirArmado = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const torneoId = request.data?.torneoId;
+    if (!torneoId) throw new HttpsError("invalid-argument", "Falta el torneo.");
+
+    const ref = db.doc(`torneos/${torneoId}`);
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError("not-found", "El torneo no existe.");
+    const t = snap.data();
+
+    if (t.creadorId !== uid) throw new HttpsError("permission-denied", "Solo el creador puede abrir el armado.");
+    if (t.estado !== "BORRADOR") throw new HttpsError("failed-precondition", "El torneo ya cerró la inscripción.");
+
+    const n = t.participantes.length;
+    if (n < t.minParticipantes) {
+        throw new HttpsError("failed-precondition",
+            `Necesitás al menos ${t.minParticipantes} participantes (hay ${n}).`);
+    }
+
+    // Pool mínimo (§37): peor caso por posición sobre la unión de colecciones.
+    const conteo = await unionPorPosicion(t.participantes);
+    const requerido = { POR: n * 1, DEF: n * 5, MED: n * 5, DEL: n * 3 };
+    for (const pos of ["POR", "DEF", "MED", "DEL"]) {
+        if (conteo[pos] < requerido[pos]) {
+            return {
+                ok: false,
+                validacion: { pos, faltan: requerido[pos] - conteo[pos], conteo, requerido }
+            };
+        }
+    }
+
+    // Alcanza: abrir ventana de armado de 24hs (transacción para re-chequear).
+    const cierra = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+    await db.runTransaction(async (tx) => {
+        const s = await tx.get(ref);
+        const tt = s.data();
+        if (tt.estado !== "BORRADOR") throw new HttpsError("failed-precondition", "El torneo ya cambió de estado.");
+        if (tt.participantes.length < tt.minParticipantes) {
+            throw new HttpsError("failed-precondition", "Se fueron participantes; ya no llegás al mínimo.");
+        }
+        tx.update(ref, {
+            estado: "ARMADO",
+            ventanaArmadoCierra: cierra,
+            ultimoAvanceEn: ahoraISO()
+        });
+    });
+
+    return { ok: true, ventanaArmadoCierra: cierra };
+});

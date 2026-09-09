@@ -183,6 +183,15 @@ automático) y puede tardar unos minutos.
 
 ```
 functions/index.js    inicializarUsuario · abrirPaquete · comprarPaquete ·
-                       venderRepetido · registrarPartidoIA
+                       venderRepetido · registrarPartidoIA ·
+                       crearTorneo · unirseTorneo · abrirArmado   (Etapa 9A)
 functions/juego/       copia de la lógica pura (economía, motor, verificación)
 ```
+
+## Torneos (Etapa 9A)
+
+Sala de torneos entre amigos: **crear** un torneo (te da un código para
+compartir), **unirse** con un código, y ver los participantes **en vivo**. El
+creador **abre el armado** (ventana de 24 hs) cuando hay al menos 4 participantes
+y el plantel del grupo alcanza (§37). Todo se crea y valida en Cloud Functions;
+el reclamo de jugadores con exclusividad llega en la 9B.

@@ -61,12 +61,24 @@ service cloud.firestore {
       }
     }
 
-    // Torneos y amistosos (Etapas 9–10): todavía no se usan. Bloqueados por
-    // defecto hasta que existan sus reglas propias.
-    match /torneos/{documento=**} {
-      allow read, write: if false;
+    // Torneos (§35, Etapa 9). El cliente LEE un torneo solo si es participante
+    // (para la vista en vivo de la sala y de los reclamos), y NUNCA lo escribe:
+    // crear, unirse, abrir el armado y reclamar jugadores pasan por Cloud
+    // Functions (Admin SDK), que ignoran estas reglas. La consulta "mis torneos"
+    // (participantes array-contains uid) queda permitida por esta misma regla.
+    match /torneos/{torneoId} {
+      allow read: if request.auth != null
+                  && request.auth.uid in resource.data.participantes;
+      allow write: if false;
+
+      match /{documento=**} {
+        allow read: if request.auth != null
+                    && request.auth.uid in get(/databases/$(database)/documents/torneos/$(torneoId)).data.participantes;
+        allow write: if false;
+      }
     }
 
+    // Amistosos entre usuarios (Etapa 10): todavía no se usan.
     match /matches/{documento=**} {
       allow read, write: if false;
     }

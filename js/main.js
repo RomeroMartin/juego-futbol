@@ -25,6 +25,7 @@ import { initTienda } from "./ui/tienda.js";
 import { initFiltrosColeccion } from "./ui/coleccion.js";
 import { renderTeam, initFiltrosEquipo, initTacticaEquipo } from "./ui/equipo.js";
 import { initPartido } from "./ui/partido.js";
+import { initTorneos, detenerTorneos } from "./ui/torneos.js";
 
 
 // ==========================================
@@ -95,6 +96,7 @@ function arrancarJuegoUnaVez() {
     initFiltrosEquipo();
     initTacticaEquipo();
     initPartido();
+    initTorneos();
 }
 
 
@@ -118,6 +120,7 @@ initLogin();
 observarSesion(async (user) => {
     if (!user) {
         limpiarEstado();
+        detenerTorneos();
         document.getElementById("userName").textContent = "";
         mostrarLogin();
         return;

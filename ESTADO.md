@@ -1,3 +1,12 @@
+# ESTADO — Después de la Etapa 9A (Torneos: sala) 🏆
+
+> **Última sesión: Etapa 9A** (crear torneo, unirse por código, abrir armado con
+> validación de pool). Falta **9B** (reclamar jugadores con exclusividad, pool de
+> reserva, congelado del XI). El detalle de la Etapa 9A está en la **sección 7**,
+> al final. Lo de abajo (secciones 1–6) es de la Etapa 8 y sigue vigente.
+
+---
+
 # ESTADO — Después de la Etapa 8 (Cloud Functions) 🔒
 
 > Etapa del plan completada: **8**. Base: Etapas 0–7 ya en `main`.
@@ -81,3 +90,62 @@ Modificados:
 - **El sobre de torneo (§15.2)** reutiliza `abrirPaquete` pero con la condición de mínimo 4 participantes; conviene una Function específica que valide el torneo antes de otorgar.
 - **Duplicación cliente/servidor:** si Etapa 9 toca `config/` o el motor, recordar sincronizar `js/` y `functions/juego/`.
 - **Deploy:** `firebase deploy` ya sube hosting + reglas + functions juntos. El primer deploy de functions habilita APIs de Google Cloud (automático) y puede tardar unos minutos.
+
+---
+
+## 7. Etapa 9A — Torneos: la sala (creación / unión / apertura)
+
+### Qué se implementó
+- **Esquema `torneos/{id}`** en Firestore (§35): nombre, `codigoInvitacion`, creador,
+  estado (BORRADOR→ARMADO→EN_CURSO→FINALIZADO), participantes, `nombres` (uid→nombre,
+  para mostrar sin leer docs ajenos), `jugadoresReclamados` (vacío hasta 9B),
+  `ventanaArmadoCierra`, y los campos de avance/fixture/tabla listos para 9B/Etapa 10.
+- **3 Cloud Functions** (en `functions/index.js`):
+  - `crearTorneo(nombre)` — genera un código único (alfabeto sin I/O/0/1), deja el
+    torneo en BORRADOR con el creador como primer participante.
+  - `unirseTorneo(codigo)` — suma al usuario (solo en BORRADOR, respeta el máximo de 8).
+  - `abrirArmado(torneoId)` — solo el creador; valida **mínimo 4** participantes y el
+    **pool mínimo** (§37: peor caso `{POR:n, DEF:5n, MED:5n, DEL:3n}` sobre la unión de
+    colecciones, jugadores DISTINTOS). Si no alcanza, devuelve `{ok:false, validacion}`
+    con qué posición falta; si alcanza, pasa a ARMADO con ventana de 24 hs.
+- **Reglas** (`firestore.rules`): un torneo lo **lee** solo un participante
+  (`uid in resource.data.participantes`), y **nadie lo escribe** desde el cliente. La
+  consulta "mis torneos" (`array-contains`) queda cubierta por esa misma regla.
+- **UI nueva "Torneos"** (`js/ui/torneos.js` + nav 🏆 + pantalla en index.html):
+  lista de mis torneos **en vivo** (Firestore realtime), crear, unirse por código, y
+  vista de detalle con el código para compartir, los participantes en vivo y el botón
+  del creador para abrir el armado (muestra el aviso de pool insuficiente si aplica).
+
+### Archivos
+- Nuevo: `js/ui/torneos.js`.
+- Modificados: `functions/index.js` (+3 funciones y helpers de código/pool),
+  `firestore.rules` (bloque `torneos/`), `js/core/nube.js` (listeners
+  `escucharMisTorneos`/`escucharTorneo` + wrappers `crearTorneoNube`/`unirseTorneoNube`/
+  `abrirArmadoNube`), `js/ui/navegacion.js` (render al abrir la pantalla), `js/main.js`
+  (`initTorneos` + `detenerTorneos` al cerrar sesión), `index.html`, `css/estilos.css`.
+
+### Decisiones
+- **Formato: solo LIGA en V1.0** (§40). ELIMINACION/GRUPOS quedan para después.
+- **`nombres` en el doc del torneo:** como el cliente no puede leer el `users/{uid}` de
+  otros (reglas), el nombre visible de cada participante se guarda en el propio torneo.
+- **La vista en vivo** usa `onSnapshot`; funciona igual con el long-polling forzado.
+- **Validación de pool** corre server-side leyendo las colecciones; el flip de estado va
+  en transacción re-chequeando estado y mínimo.
+
+### Cómo testear (necesita varias cuentas)
+1. Con tu cuenta: Torneos → Crear → aparece el código.
+2. Con 3 cuentas más (otro navegador/incógnito o amigas): Unirse con ese código.
+3. Con < 4 participantes, el botón de abrir no aparece (avisa cuántos faltan).
+4. Con 4+, el creador toca **Abrir armado**: si el pool no alcanza, muestra qué posición
+   falta (§37); si alcanza, el torneo pasa a "Armando equipos".
+
+### Advertencias para la Etapa 9B (lo que sigue)
+- Agregar `reclamarJugador` (§38, ejemplo en el doc) y `liberarJugador` — transacción
+  atómica sobre `jugadoresReclamados`; verificar posesión del jugador.
+- **Pool de Reserva** (§37.1): jugadores COMÚN que nadie del torneo posee, máx. 3, en
+  préstamo, con exclusividad.
+- Guardar el **XI de torneo** por participante (¿subcolección `torneos/{id}/equipos/{uid}`?
+  Las reglas de subcolección ya están: lectura para participantes, escritura Admin).
+- **Cierre de ventana** (§17.3): al vencer `ventanaArmadoCierra`, congelar formación+XI,
+  dejar la mentalidad editable. Hoy el estado ARMADO ya se setea con la fecha de cierre.
+- Recordar la **duplicación cliente/servidor** si se toca `config/` o el motor.
