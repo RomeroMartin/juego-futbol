@@ -67,13 +67,16 @@ export const estado = {
 // Devuelve { migradoDesdeLocal, datasetReseteado } para que la UI pueda avisar.
 export async function hidratarDesdeNube(user) {
     const uid = user.uid;
+    console.log("🔎 FF: hidratarDesdeNube inicio, uid =", uid);
     const nube = await leerPartida(uid);
+    console.log("🔎 FF: leerPartida devolvió, existe =", nube.existe);
 
     let migradoDesdeLocal = false;
     let datasetReseteado = false;
 
     if (nube.existe) {
         aplicar(nube);
+        console.log("🔎 FF: estado aplicado desde la nube");
         return { migradoDesdeLocal, datasetReseteado };
     }
 
@@ -91,8 +94,10 @@ export async function hidratarDesdeNube(user) {
         aplicar(nuevoJugador());
     }
 
+    console.log("🔎 FF: usuario nuevo, escribiendo partida completa…");
     await escribirPartidaCompleta(uid, estado, construirPerfil(user));
     marcarMigrado();
+    console.log("🔎 FF: partida nueva creada en la nube");
 
     return { migradoDesdeLocal, datasetReseteado };
 }
