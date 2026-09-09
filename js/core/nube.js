@@ -177,7 +177,9 @@ export async function escribirPartidaCompleta(uid, estado, perfil) {
     let ops = 0;
     for (const item of estado.collection) {
         const id = item.player.id;
-        batch.set(doc(db, "users", uid, "collection", id), {
+        // El id del jugador es numérico; Firestore exige un string en la ruta del
+        // documento. Se stringifica SOLO para la ruta; `playerId` guarda el número.
+        batch.set(doc(db, "users", uid, "collection", String(id)), {
             playerId: id,
             quantity: item.quantity,
             obtenidoEn: ahora
@@ -241,7 +243,8 @@ async function escribirCambios(uid, estado) {
 
         const esNuevo = !cacheObtenido.has(id) || cacheObtenido.get(id) == null;
         const obtenidoEn = esNuevo ? ahora : cacheObtenido.get(id);
-        batch.set(doc(db, "users", uid, "collection", id), {
+        // String(id) en la ruta: el id es numérico y Firestore exige string.
+        batch.set(doc(db, "users", uid, "collection", String(id)), {
             playerId: id,
             quantity: item.quantity,
             obtenidoEn
