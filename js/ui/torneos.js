@@ -57,6 +57,7 @@ let equipoTorneo = null;     // mi equipo del torneo en vivo (o null)
 let slotAbierto = null;      // slot cuyo selector de jugador está abierto (o null)
 let reservaCandidatos = null; // candidatos del Pool de Reserva ya pedidos (o null)
 let cargandoReserva = false;
+let mensajeArmado = null;    // aviso visible en pantalla { tipo:'ok'|'error'|'info', texto } (mejor que alert en mobile)
 
 const POS_NOMBRE = { POR: "arqueros", DEF: "defensores", MED: "mediocampistas", DEL: "delanteros" };
 const POS_SINGULAR = { POR: "arquero", DEF: "defensor", MED: "mediocampista", DEL: "delantero" };
@@ -278,6 +279,12 @@ function pintarArmado(c, t, uid) {
     // Selector de formación (solo con ventana abierta).
     const selector = abierta ? pintarSelectorFormacion(formacion) : "";
 
+    // Atajo: copiar el equipo del modo normal (respeta la exclusividad; salta los
+    // jugadores que otro ya reclamó). Solo con ventana abierta.
+    const copiar = abierta
+        ? `<button id="torneoCopiarIA" class="secondary-button torneo-copiar">📋 Copiar mi equipo del modo normal</button>`
+        : "";
+
     // Selector de jugador para un slot (solo con ventana abierta).
     const picker = (abierta && slotAbierto) ? pintarPicker(t, uid, posDeSlot[slotAbierto]) : "";
 
@@ -298,7 +305,9 @@ function pintarArmado(c, t, uid) {
             <h2>${escapar(t.nombre)}</h2>
 
             ${barra}
+            ${bannerMensaje()}
             ${selector}
+            ${copiar}
 
             <h3>Tu equipo del torneo (${formacion})</h3>
             ${cancha}
@@ -312,6 +321,9 @@ function pintarArmado(c, t, uid) {
 
     const btnIniciar = document.getElementById("torneoIniciar");
     if (btnIniciar) btnIniciar.addEventListener("click", () => onIniciarTorneo(t, abierta));
+
+    const btnCopiar = document.getElementById("torneoCopiarIA");
+    if (btnCopiar) btnCopiar.addEventListener("click", () => onCopiarEquipoIA(t));
 }
 
 
@@ -338,13 +350,19 @@ function pintarElegirFormacion(c, t, abierta) {
             <div class="torneo-aviso torneo-aviso-ok">
                 🟢 <strong>Ventana de armado abierta.</strong> Cierra en ${textoTiempoRestante(t.ventanaArmadoCierra)}.
             </div>
+            ${bannerMensaje()}
             <h3>Elegí tu formación para el torneo</h3>
-            <p class="torneo-nota">La formación queda fija una vez que cierra la ventana (§17.3).</p>
+            <p class="torneo-nota">La formación queda fija una vez que cierra la ventana (§17.3).
+            O copiá directamente tu equipo del modo normal:</p>
+            <button id="torneoCopiarIA" class="secondary-button torneo-copiar">📋 Copiar mi equipo del modo normal</button>
             ${pintarSelectorFormacion(null)}
         </div>`;
 
     document.getElementById("torneoVolverLista").addEventListener("click", volverALista);
     engancharSelectorFormacion(t);
+
+    const btnCopiar = document.getElementById("torneoCopiarIA");
+    if (btnCopiar) btnCopiar.addEventListener("click", () => onCopiarEquipoIA(t));
 }
 
 
@@ -608,9 +626,11 @@ function enganchesArmado(t, uid, abierta) {
         b.addEventListener("click", () => onLiberar(t.id, Number(b.dataset.liberar)))
     );
 
-    // Reclamar un jugador (propio o de reserva).
+    // Reclamar un jugador (propio o de reserva). Capturamos el slot abierto al
+    // enganchar, para no depender de una variable global al momento del click.
+    const slotDelPicker = slotAbierto;
     cont().querySelectorAll("[data-reclamar]").forEach(b =>
-        b.addEventListener("click", () => onReclamar(t.id, Number(b.dataset.reclamar)))
+        b.addEventListener("click", () => onReclamar(t.id, Number(b.dataset.reclamar), slotDelPicker))
     );
 
     const cerrar = document.getElementById("torneoCerrarPicker");
@@ -700,43 +720,99 @@ async function onElegirFormacion(torneoId, formacion) {
         return;
     }
     ocupado = true;
+    mensajeArmado = null;
     try {
         await elegirFormacionTorneoNube(torneoId, formacion);
         resetPicker();
         // El equipo actualizado llega por el listener (escucharEquipoTorneo).
     } catch (e) {
-        alert(e?.message || "No se pudo elegir la formación.");
+        mensajeArmado = { tipo: "error", texto: e?.message || "No se pudo elegir la formación." };
     } finally {
         ocupado = false;
+        pintar();
     }
 }
 
-async function onReclamar(torneoId, playerId) {
-    if (ocupado || !slotAbierto) return;
+async function onReclamar(torneoId, playerId, slot) {
+    const puesto = slot || slotAbierto;
+    if (ocupado || !puesto) return;
     ocupado = true;
+    mensajeArmado = null;
     try {
-        await reclamarJugadorNube(torneoId, playerId, slotAbierto);
+        await reclamarJugadorNube(torneoId, playerId, puesto);
+        // Actualización optimista: mostramos el jugador en el puesto ya mismo
+        // (el listener lo confirma enseguida). Así en mobile se ve al instante.
+        if (equipoTorneo) equipoTorneo.xi = { ...(equipoTorneo.xi || {}), [puesto]: playerId };
+        const pl = CATALOGO.get(playerId);
+        mensajeArmado = { tipo: "ok", texto: `${pl?.name || "Jugador"} agregado al puesto.` };
         slotAbierto = null;
         reservaCandidatos = null;
-        // El XI actualizado llega por el listener.
     } catch (e) {
-        alert(e?.message || "No se pudo reclamar al jugador.");
-        pintar();   // refresca el estado (quizás otro lo reclamó recién)
+        mensajeArmado = { tipo: "error", texto: e?.message || "No se pudo reclamar al jugador (probá de nuevo)." };
     } finally {
         ocupado = false;
+        pintar();   // refresca SIEMPRE (éxito o error), no dependemos solo del listener
     }
 }
 
 async function onLiberar(torneoId, playerId) {
     if (ocupado) return;
     ocupado = true;
+    mensajeArmado = null;
     try {
         await liberarJugadorNube(torneoId, playerId);
-        // El XI actualizado llega por el listener.
+        // Actualización optimista: vaciamos el puesto que lo tenía.
+        if (equipoTorneo?.xi) {
+            const xi = { ...equipoTorneo.xi };
+            for (const s of Object.keys(xi)) if (xi[s] === playerId) xi[s] = null;
+            equipoTorneo.xi = xi;
+        }
     } catch (e) {
-        alert(e?.message || "No se pudo liberar al jugador.");
+        mensajeArmado = { tipo: "error", texto: e?.message || "No se pudo liberar al jugador." };
     } finally {
         ocupado = false;
+        pintar();
+    }
+}
+
+// Copiar el equipo del modo normal al torneo: pone la misma formación y reclama
+// cada jugador que esté LIBRE (respeta la exclusividad, §36.1). Los que ya tomó
+// otro se saltean y se avisan para completarlos a mano.
+async function onCopiarEquipoIA(t) {
+    if (ocupado) return;
+    const miTeam = estado.team || {};
+    const ids = Object.entries(miTeam).filter(([, pid]) => pid);
+    if (ids.length === 0) {
+        mensajeArmado = { tipo: "error", texto: "No tenés un equipo armado en el modo normal para copiar." };
+        pintar();
+        return;
+    }
+    if (!confirm("Voy a poner tu formación del modo normal y reclamar los jugadores que estén libres. ¿Seguís?")) return;
+
+    ocupado = true;
+    mensajeArmado = { tipo: "info", texto: "Copiando tu equipo…" };
+    pintar();
+    try {
+        // 1) Misma formación que el modo normal (libera lo que hubiera reclamado).
+        await elegirFormacionTorneoNube(t.id, estado.formacion);
+        // 2) Reclamar cada jugador en su puesto; saltear los ya tomados.
+        const noPudieron = [];
+        for (const [slot, pid] of ids) {
+            try {
+                await reclamarJugadorNube(t.id, pid, slot);
+            } catch (e) {
+                noPudieron.push(CATALOGO.get(pid)?.name || `#${pid}`);
+            }
+        }
+        mensajeArmado = noPudieron.length === 0
+            ? { tipo: "ok", texto: "¡Listo! Copié tu equipo del modo normal." }
+            : { tipo: "info", texto: `Copié tu equipo. No pude reclamar (ya los tomó otro): ${noPudieron.join(", ")}. Completá esos puestos a mano.` };
+        resetPicker();
+    } catch (e) {
+        mensajeArmado = { tipo: "error", texto: e?.message || "No se pudo copiar el equipo." };
+    } finally {
+        ocupado = false;
+        pintar();
     }
 }
 
@@ -818,9 +894,19 @@ async function onGuardarMentalidad(torneoId) {
 function volverALista() {
     detalleId = null;
     avisoValidacion = "";
+    mensajeArmado = null;
     detenerSubEquipo();
     resetPicker();
     pintar();
+}
+
+// Aviso visible en pantalla (reemplaza a alert(), que en mobile a veces no se ve).
+function bannerMensaje() {
+    if (!mensajeArmado) return "";
+    const clase = mensajeArmado.tipo === "ok" ? "torneo-aviso torneo-aviso-ok"
+        : mensajeArmado.tipo === "info" ? "torneo-aviso torneo-aviso-info"
+        : "torneo-aviso torneo-aviso-error";
+    return `<div class="${clase}">${escapar(mensajeArmado.texto)}</div>`;
 }
 
 // ¿La ventana de armado sigue abierta? (ARMADO + fecha de cierre en el futuro).

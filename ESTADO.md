@@ -307,6 +307,17 @@ Modificados:
   fecha** simula la fecha y actualiza la tabla; cambiar mentalidad antes de la
   fecha; al terminar todas las fechas → `FINALIZADO` con el campeón.
 
+### Ajustes de UX (post-deploy 10A, mismo alcance)
+- **Aviso en pantalla** en el armado en lugar de `alert()` (en mobile los `alert`
+  de error no se veían → parecía que "no pasaba nada" al reclamar). Ahora
+  reclamar/liberar/elegir formación muestran un banner y **refrescan siempre**
+  (con actualización optimista del XI, sin depender solo del listener).
+- **Botón "Copiar mi equipo del modo normal"** en el armado (§34/§36.1): pone la
+  formación del equipo vs IA y reclama los jugadores que estén **libres**,
+  salteando (y avisando) los que ya tomó otro participante. Respeta la
+  exclusividad; es solo un atajo sobre `reclamarJugador`.
+- Solo tocó `js/ui/torneos.js` y `css/estilos.css` (no hubo cambios de servidor).
+
 ### Advertencias para la Etapa 10B (lo que sigue)
 - **Recompensas (§43)** al pasar a `FINALIZADO` (Fichas por puesto) — van en
   `js/config/economia.js` (+copia en `functions/juego/config/`), otorgadas por CF.
