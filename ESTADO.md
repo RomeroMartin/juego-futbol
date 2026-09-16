@@ -1,9 +1,12 @@
-# ESTADO — Después de la Etapa 9A (Torneos: sala) 🏆
+# ESTADO — Después de la Etapa 9B (Torneos: armado del equipo) 🏆
 
-> **Última sesión: Etapa 9A** (crear torneo, unirse por código, abrir armado con
-> validación de pool). Falta **9B** (reclamar jugadores con exclusividad, pool de
-> reserva, congelado del XI). El detalle de la Etapa 9A está en la **sección 7**,
-> al final. Lo de abajo (secciones 1–6) es de la Etapa 8 y sigue vigente.
+> **Última sesión: Etapa 9B** (reclamar jugadores con exclusividad, Pool de
+> Reserva, formación del torneo y congelado del XI al cerrar la ventana). El
+> detalle está en la **sección 8**, al final. La **sección 7** es la Etapa 9A
+> (sala) y sigue vigente; las **secciones 1–6** son de la Etapa 8.
+>
+> **Sigue: Etapa 10** — generar el fixture, avanzar/**jugar las fechas**, tabla y
+> premios. Recién ahí el grupo juega el torneo de punta a punta.
 
 ---
 
@@ -148,4 +151,92 @@ Modificados:
   Las reglas de subcolección ya están: lectura para participantes, escritura Admin).
 - **Cierre de ventana** (§17.3): al vencer `ventanaArmadoCierra`, congelar formación+XI,
   dejar la mentalidad editable. Hoy el estado ARMADO ya se setea con la fecha de cierre.
+- Recordar la **duplicación cliente/servidor** si se toca `config/` o el motor.
+
+---
+
+## 8. Etapa 9B — Torneos: armado del equipo (§36.1, §37.1, §38)
+
+### Qué se implementó
+- Durante la ventana de 24 hs, cada participante **arma su equipo del torneo**
+  reclamando jugadores con **exclusividad** (§36.1): el primero que reclama a un
+  jugador lo bloquea para el resto. Todo lo que da exclusividad corre **en el
+  servidor, en transacción** (§38).
+- **4 Cloud Functions nuevas** (en `functions/index.js`):
+  - `elegirFormacionTorneo(torneoId, formacion)` — fija la formación del torneo.
+    **Cambiarla libera todos los jugadores que tenías reclamados** (los slots
+    cambian y vuelven al pool) — decisión confirmada con el usuario.
+  - `reclamarJugador(torneoId, playerId, slot)` — **el punto crítico (§38)**:
+    transacción atómica que valida estado `ARMADO` + ventana abierta, que seas
+    participante, que la posición del slot coincida, que el slot esté libre, que
+    **nadie más** lo haya reclamado y que **poseas** al jugador (o que aplique el
+    Pool de Reserva). Escribe el índice global (`jugadoresReclamados`) **y** el
+    slot del equipo en la misma transacción.
+  - `liberarJugador(torneoId, playerId)` — vuelve el jugador al pool y vacía su
+    slot (§39). Solo con la ventana abierta.
+  - `listarPoolReserva(torneoId, posicion)` — **Pool de Reserva (§37.1)**:
+    jugadores COMÚN reales que **ningún** participante posee y que están sin
+    reclamar. El cliente no puede calcularlo (no lee colecciones ajenas), así que
+    lo arma el servidor. El reclamo de reserva se valida en `reclamarJugador`:
+    COMÚN, nadie lo posee, **máx. 3 por equipo**, en **préstamo** (marcado en
+    `reservaUsados`, no queda en la colección).
+- **Congelado (§17.3):** las 3 funciones de escritura rechazan cambios si la
+  ventana ya venció (`Date.now() >= ventanaArmadoCierra`). La UI muestra el equipo
+  en modo solo-lectura. La mentalidad editable entre fechas y el flip a `EN_CURSO`
+  son de la **Etapa 10**.
+
+### Modelo de datos nuevo
+- Subcolección **`torneos/{torneoId}/equipos/{uid}`**:
+  `{ schemaVersion, formacion, xi: { slot → playerId }, mentalidadOfensiva,
+  mentalidadDefensiva, reservaUsados: [ids], actualizadoEn }`.
+- El índice de exclusividad sigue en el doc del torneo: `jugadoresReclamados`
+  (`playerId → uid`), como ya preveía la Etapa 9A.
+
+### Archivos
+- Modificados: `functions/index.js` (+4 funciones y helpers: `slotsPorPosicion`,
+  `armadoAbierto`, `exigirArmadoAbierto`, `idsPoseidosPorTorneo(+Tx)`,
+  `equipoTorneoVacio`), `js/core/nube.js` (listener `escucharEquipoTorneo` +
+  wrappers `elegirFormacionTorneoNube`/`reclamarJugadorNube`/`liberarJugadorNube`/
+  `listarPoolReservaNube`), `js/ui/torneos.js` (vista de armado: selector de
+  formación, cancha por líneas, selector de jugador con estado en vivo de quién
+  reclamó qué, y acceso al pool de reserva), `css/estilos.css` (estilos del
+  armado).
+- **`firestore.rules` NO se tocó:** las reglas de la subcolección
+  `torneos/{id}/equipos/{uid}` (lectura para participantes, escritura solo Admin)
+  ya estaban desde la 9A y cubren todo esto.
+
+### Decisiones
+- **Cambiar formación = liberar reclamos.** Como cada formación tiene distintos
+  slots, mantener jugadores sería inconsistente. Confirmado con el usuario.
+- **La comprobación "nadie lo posee" del reclamo de reserva** usa lecturas
+  transaccionales (`idsPoseidosPorTorneoTx`). La exclusividad dura la garantiza,
+  igual, el chequeo transaccional de `jugadoresReclamados`.
+- **Sin cambios de balance ni de `config/`**, así que no hubo que re-sincronizar
+  `js/` ↔ `functions/juego/` (solo se importó `formaciones.js`/`mentalidades.js`,
+  que ya estaban copiadas).
+
+### Cómo testear (necesita varias cuentas + deploy de functions)
+1. `firebase deploy` (sube las 4 functions nuevas).
+2. Con el torneo en "Armando equipos": elegir formación → aparece la cancha.
+3. Reclamar jugadores propios → quedan en los slots; en otra cuenta se ven como
+   "reclamado por …".
+4. **Dos cuentas reclaman el mismo jugador** → una gana, la otra recibe error claro.
+5. Reclamar un jugador que no tenés → falla (salvo por el pool de reserva).
+6. Sin arqueros propios → "Buscar en el pool de reserva" trae COMÚN que nadie tiene;
+   máx. 3 de reserva por equipo.
+7. Cambiar de formación → libera lo reclamado (pide confirmación).
+8. Al vencer la ventana → el equipo queda congelado (solo lectura).
+
+### Advertencias para la Etapa 10 (lo que sigue)
+- **Jugar las fechas.** Generar el fixture (liga todos contra todos), avance
+  MANUAL por el creador (§41.1) + forzado por inactividad a los 5 días (§41.2),
+  simulación de cada fecha en Cloud Function con semilla (§41.4), tabla (§42) y
+  premios (§43). El flip `ARMADO → EN_CURSO` va acá.
+- **Mentalidad editable entre fechas** (§17.3): el equipo ya guarda
+  `mentalidadOfensiva`/`mentalidadDefensiva`; falta la UI de cambiarla antes de
+  cada fecha (la formación y el XI quedan congelados).
+- **Sobre pre-partido de torneo** (§15.2) con el aviso de que no sirve para el
+  torneo en curso.
+- Al abandonar con el torneo en curso: partidos restantes 0-3 (§39); los
+  jugadores **no** se liberan (§39).
 - Recordar la **duplicación cliente/servidor** si se toca `config/` o el motor.

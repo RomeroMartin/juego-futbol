@@ -1,21 +1,37 @@
 // ==========================================
-// TORNEOS — sala: crear, unirse, abrir armado (Etapa 9A, §35–§37)
+// TORNEOS — sala (Etapa 9A) + armado del equipo (Etapa 9B, §36.1, §37.1, §38)
 // ==========================================
 //
-// Toda la escritura pasa por Cloud Functions; acá solo se pide y se muestra la
-// sala EN VIVO (Firestore en tiempo real). El armado del equipo con exclusividad
-// (reclamar jugadores) llega en la Etapa 9B.
+// Toda la escritura pasa por Cloud Functions; acá solo se pide y se muestra el
+// torneo EN VIVO (Firestore en tiempo real). Etapa 9A: crear, unirse, abrir el
+// armado. Etapa 9B: durante la ventana de 24hs cada uno arma SU equipo del
+// torneo reclamando jugadores con exclusividad. Jugar las fechas es la Etapa 10.
 
 import { usuarioActual } from "../core/auth.js";
+import { estado } from "../core/estado.js";
+import { JUGADORES } from "../data/jugadores.js";
+import {
+    CLAVES_FORMACION,
+    slotsDeFormacion
+} from "../config/formaciones.js";
 import {
     escucharMisTorneos,
+    escucharEquipoTorneo,
     crearTorneoNube,
     unirseTorneoNube,
-    abrirArmadoNube
+    abrirArmadoNube,
+    elegirFormacionTorneoNube,
+    reclamarJugadorNube,
+    liberarJugadorNube,
+    listarPoolReservaNube
 } from "../core/nube.js";
 
 
 const cont = () => document.getElementById("torneosContenido");
+
+// Catálogo por id: para mostrar el nombre de un jugador de reserva, que no está
+// en la colección propia.
+const CATALOGO = new Map(JUGADORES.map(j => [j.id, j]));
 
 let unsubLista = null;      // suscripción en vivo a "mis torneos"
 let torneos = [];           // último estado recibido
@@ -23,7 +39,17 @@ let detalleId = null;       // torneo abierto en la vista de detalle (o null = l
 let ocupado = false;        // evita doble submit mientras responde el servidor
 let avisoValidacion = "";   // mensaje de pool insuficiente (§37), si lo hubo
 
+// Armado (9B): suscripción a MI equipo del torneo + estado del selector de jugador.
+let unsubEquipo = null;
+let equipoSubId = null;      // torneoId al que está suscripto el listener del equipo
+let equipoTorneo = null;     // mi equipo del torneo en vivo (o null)
+let slotAbierto = null;      // slot cuyo selector de jugador está abierto (o null)
+let reservaCandidatos = null; // candidatos del Pool de Reserva ya pedidos (o null)
+let cargandoReserva = false;
+
 const POS_NOMBRE = { POR: "arqueros", DEF: "defensores", MED: "mediocampistas", DEL: "delanteros" };
+const POS_SINGULAR = { POR: "arquero", DEF: "defensor", MED: "mediocampista", DEL: "delantero" };
+const ORDEN_LINEAS = ["DEL", "MED", "DEF", "POR"];
 const ESTADO_ETIQUETA = {
     BORRADOR: "Inscripción abierta",
     ARMADO: "Armando equipos",
@@ -49,11 +75,33 @@ export function renderTorneos() {
     pintar();
 }
 
-// Corta la suscripción (al cerrar sesión).
+// Corta las suscripciones (al cerrar sesión).
 export function detenerTorneos() {
     if (unsubLista) { unsubLista(); unsubLista = null; }
+    detenerSubEquipo();
     torneos = [];
     detalleId = null;
+    resetPicker();
+}
+
+// Asegura que el listener del equipo del torneo esté enganchado al torneo actual.
+function asegurarSubEquipo(torneoId, uid) {
+    if (equipoSubId === torneoId) return;
+    detenerSubEquipo();
+    equipoSubId = torneoId;
+    unsubEquipo = escucharEquipoTorneo(torneoId, uid, (eq) => { equipoTorneo = eq; pintar(); });
+}
+
+function detenerSubEquipo() {
+    if (unsubEquipo) { unsubEquipo(); unsubEquipo = null; }
+    equipoSubId = null;
+    equipoTorneo = null;
+}
+
+function resetPicker() {
+    slotAbierto = null;
+    reservaCandidatos = null;
+    cargandoReserva = false;
 }
 
 
@@ -65,7 +113,7 @@ function pintar() {
     const c = cont();
     if (!c) return;
     if (detalleId) pintarDetalle(c);
-    else pintarLista(c);
+    else { detenerSubEquipo(); pintarLista(c); }
 }
 
 
@@ -105,23 +153,43 @@ function pintarLista(c) {
     document.getElementById("torneoCrear").addEventListener("click", onCrear);
     document.getElementById("torneoUnirse").addEventListener("click", onUnirse);
     c.querySelectorAll("[data-abrir-torneo]").forEach(b =>
-        b.addEventListener("click", () => { detalleId = b.dataset.abrirTorneo; avisoValidacion = ""; pintar(); })
+        b.addEventListener("click", () => {
+            detalleId = b.dataset.abrirTorneo;
+            avisoValidacion = "";
+            resetPicker();
+            pintar();
+        })
     );
 }
 
 
 function pintarDetalle(c) {
     const t = torneos.find(x => x.id === detalleId);
-    if (!t) { detalleId = null; pintarLista(c); return; }
+    if (!t) { detalleId = null; detenerSubEquipo(); pintarLista(c); return; }
 
     const uid = usuarioActual()?.uid;
+
+    // Etapa 9B: en estado ARMADO se arma el equipo del torneo.
+    if (t.estado === "ARMADO") {
+        asegurarSubEquipo(t.id, uid);
+        pintarArmado(c, t, uid);
+        return;
+    }
+
+    detenerSubEquipo();
+    pintarSala(c, t, uid);
+}
+
+
+// Vista de sala (BORRADOR y estados sin armado): código, participantes y, para el
+// creador, el botón de abrir el armado (Etapa 9A).
+function pintarSala(c, t, uid) {
     const esCreador = t.creadorId === uid;
 
     const participantes = t.participantes
         .map(u => `<li>${escapar(t.nombres?.[u] || "Jugador")}${u === t.creadorId ? " 👑" : ""}</li>`)
         .join("");
 
-    // Botón de abrir armado (solo el creador, solo en BORRADOR).
     let accionCreador = "";
     if (esCreador && t.estado === "BORRADOR") {
         const faltan = t.minParticipantes - t.participantes.length;
@@ -131,15 +199,6 @@ function pintarDetalle(c) {
     }
 
     const aviso = avisoValidacion ? `<div class="torneo-aviso">${avisoValidacion}</div>` : "";
-
-    let estadoBloque = "";
-    if (t.estado === "ARMADO") {
-        estadoBloque = `
-            <div class="torneo-aviso torneo-aviso-ok">
-                🟢 <strong>Ventana de armado abierta.</strong> El armado del equipo con
-                exclusividad (reclamar jugadores) llega en la próxima actualización del juego.
-            </div>`;
-    }
 
     c.innerHTML = `
         <button class="back-button" id="torneoVolverLista">← Mis torneos</button>
@@ -157,16 +216,250 @@ function pintarDetalle(c) {
             <ul class="torneo-participantes">${participantes}</ul>
 
             ${aviso}
-            ${estadoBloque}
             ${accionCreador}
         </div>
     `;
 
     document.getElementById("torneoVolverLista")
-        .addEventListener("click", () => { detalleId = null; avisoValidacion = ""; pintar(); });
+        .addEventListener("click", volverALista);
 
     const btnAbrir = document.getElementById("torneoAbrir");
     if (btnAbrir) btnAbrir.addEventListener("click", () => onAbrirArmado(t.id));
+}
+
+
+// ==========================================
+// ARMADO DEL EQUIPO (Etapa 9B)
+// ==========================================
+
+function pintarArmado(c, t, uid) {
+    const abierta = ventanaAbierta(t);
+
+    // Todavía no eligió formación: pedirla primero (crea el equipo del torneo).
+    if (!equipoTorneo) {
+        pintarElegirFormacion(c, t, abierta);
+        return;
+    }
+
+    const formacion = equipoTorneo.formacion;
+    const posDeSlot = mapaSlotPosicion(formacion);
+
+    const cancha = pintarCancha(t, uid, formacion);
+
+    // Barra de estado de la ventana.
+    const barra = abierta
+        ? `<div class="torneo-aviso torneo-aviso-ok">
+               🟢 <strong>Ventana de armado abierta.</strong> Cierra en ${textoTiempoRestante(t.ventanaArmadoCierra)}.
+               Cambiar de formación o sacar un jugador lo libera para el resto.
+           </div>`
+        : `<div class="torneo-aviso">
+               🔒 <strong>Equipo congelado.</strong> La ventana de armado cerró: ya no se puede
+               modificar el equipo. <em>Jugar la fecha llega en la próxima actualización del juego.</em>
+           </div>`;
+
+    // Selector de formación (solo con ventana abierta).
+    const selector = abierta ? pintarSelectorFormacion(formacion) : "";
+
+    // Selector de jugador para un slot (solo con ventana abierta).
+    const picker = (abierta && slotAbierto) ? pintarPicker(t, uid, posDeSlot[slotAbierto]) : "";
+
+    c.innerHTML = `
+        <button class="back-button" id="torneoVolverLista">← Mis torneos</button>
+
+        <div class="torneo-detalle torneo-armado">
+            <span class="eyebrow">${ESTADO_ETIQUETA[t.estado]}</span>
+            <h2>${escapar(t.nombre)}</h2>
+
+            ${barra}
+            ${selector}
+
+            <h3>Tu equipo del torneo (${formacion})</h3>
+            ${cancha}
+            ${picker}
+        </div>
+    `;
+
+    document.getElementById("torneoVolverLista").addEventListener("click", volverALista);
+    enganchesArmado(t, uid, abierta);
+}
+
+
+// Pantalla inicial del armado: elegir formación (aún no hay equipo del torneo).
+function pintarElegirFormacion(c, t, abierta) {
+    if (!abierta) {
+        // Ventana cerrada sin haber armado: nada que hacer.
+        c.innerHTML = `
+            <button class="back-button" id="torneoVolverLista">← Mis torneos</button>
+            <div class="torneo-detalle">
+                <span class="eyebrow">${ESTADO_ETIQUETA[t.estado]}</span>
+                <h2>${escapar(t.nombre)}</h2>
+                <div class="torneo-aviso">🔒 La ventana de armado cerró y no armaste tu equipo.</div>
+            </div>`;
+        document.getElementById("torneoVolverLista").addEventListener("click", volverALista);
+        return;
+    }
+
+    c.innerHTML = `
+        <button class="back-button" id="torneoVolverLista">← Mis torneos</button>
+        <div class="torneo-detalle torneo-armado">
+            <span class="eyebrow">${ESTADO_ETIQUETA[t.estado]}</span>
+            <h2>${escapar(t.nombre)}</h2>
+            <div class="torneo-aviso torneo-aviso-ok">
+                🟢 <strong>Ventana de armado abierta.</strong> Cierra en ${textoTiempoRestante(t.ventanaArmadoCierra)}.
+            </div>
+            <h3>Elegí tu formación para el torneo</h3>
+            <p class="torneo-nota">La formación queda fija una vez que cierra la ventana (§17.3).</p>
+            ${pintarSelectorFormacion(null)}
+        </div>`;
+
+    document.getElementById("torneoVolverLista").addEventListener("click", volverALista);
+    engancharSelectorFormacion(t);
+}
+
+
+// Botonera de las 6 formaciones. `actual` = clave elegida (o null).
+function pintarSelectorFormacion(actual) {
+    const botones = CLAVES_FORMACION.map(clave => `
+        <button class="torneo-form-btn ${clave === actual ? "activa" : ""}"
+                data-formacion="${clave}">${clave}</button>
+    `).join("");
+    return `<div class="torneo-formaciones">${botones}</div>`;
+}
+
+
+// La cancha con los slots de la formación, agrupados por línea (arriba = ataque).
+function pintarCancha(t, uid, formacion) {
+    const slots = slotsDeFormacion(formacion);
+    const xi = equipoTorneo.xi || {};
+
+    const lineas = ORDEN_LINEAS.map(pos => {
+        const deLinea = slots.filter(s => s.position === pos);
+        if (deLinea.length === 0) return "";
+
+        const celdas = deLinea.map(({ slot, position }) => {
+            const pid = xi[slot];
+            if (pid) {
+                const jugador = CATALOGO.get(pid);
+                const esReserva = (equipoTorneo.reservaUsados || []).includes(pid);
+                return `
+                    <div class="torneo-slot ocupado" data-slot="${slot}">
+                        <strong>${escapar(jugador?.name || "Jugador")}</strong>
+                        <small>${escapar(jugador?.club || "")}${esReserva ? " · préstamo" : ""}</small>
+                        ${ventanaAbierta(t) ? `<button class="torneo-slot-x" data-liberar="${pid}" title="Liberar">✕</button>` : ""}
+                    </div>`;
+            }
+            return `
+                <button class="torneo-slot vacio" data-abrir-slot="${slot}" ${ventanaAbierta(t) ? "" : "disabled"}>
+                    <span>＋ ${POS_SINGULAR[position]}</span>
+                </button>`;
+        }).join("");
+
+        return `<div class="torneo-linea">${celdas}</div>`;
+    }).join("");
+
+    return `<div class="torneo-cancha">${lineas}</div>`;
+}
+
+
+// Selector de jugador para el slot abierto: tu colección de esa posición +
+// el acceso al Pool de Reserva (§37.1).
+function pintarPicker(t, uid, posicion) {
+    const yaEnMiXI = new Set(Object.values(equipoTorneo.xi || {}).filter(Boolean));
+    const reclamados = t.jugadoresReclamados || {};
+
+    // Jugadores propios de esa posición que no estén ya en mi XI.
+    const propios = estado.collection
+        .filter(e => e.player.position === posicion)
+        .map(e => e.player)
+        .filter(p => !yaEnMiXI.has(p.id))
+        .sort((a, b) => (b.overall || 0) - (a.overall || 0));
+
+    const itemsPropios = propios.length === 0
+        ? `<p class="torneo-nota">No tenés ${POS_NOMBRE[posicion]} libres en tu colección. Probá el pool de reserva.</p>`
+        : propios.map(p => {
+            const dueno = reclamados[p.id];
+            const tomadoPorOtro = dueno && dueno !== uid;
+            if (tomadoPorOtro) {
+                return `<div class="torneo-pick-item tomado">
+                            <span>${escapar(p.name)} <small>${escapar(p.club || "")}</small></span>
+                            <em>reclamado por ${escapar(t.nombres?.[dueno] || "otro")}</em>
+                        </div>`;
+            }
+            return `<button class="torneo-pick-item" data-reclamar="${p.id}">
+                        <span>${escapar(p.name)} <small>${escapar(p.club || "")}</small></span>
+                        <strong>${p.overall ?? ""}</strong>
+                    </button>`;
+        }).join("");
+
+    // Bloque del Pool de Reserva (se pide al servidor bajo demanda).
+    let reservaBloque = "";
+    if (cargandoReserva) {
+        reservaBloque = `<p class="torneo-nota">Buscando jugadores de reserva…</p>`;
+    } else if (reservaCandidatos) {
+        const usados = (equipoTorneo.reservaUsados || []).length;
+        reservaBloque = reservaCandidatos.length === 0
+            ? `<p class="torneo-nota">No hay ${POS_NOMBRE[posicion]} de reserva disponibles.</p>`
+            : `<p class="torneo-nota">Pool de reserva (${usados}/3 usados) — préstamos, no quedan en tu colección:</p>` +
+              reservaCandidatos.map(p => `
+                  <button class="torneo-pick-item reserva" data-reclamar="${p.id}">
+                      <span>${escapar(p.name)} <small>${escapar(p.club || "")} · préstamo</small></span>
+                      <strong>${p.overall ?? ""}</strong>
+                  </button>`).join("");
+    } else {
+        reservaBloque = `<button class="secondary-button" id="torneoVerReserva">Buscar en el pool de reserva</button>`;
+    }
+
+    return `
+        <div class="torneo-picker">
+            <div class="torneo-picker-head">
+                <strong>Elegí un ${POS_SINGULAR[posicion]}</strong>
+                <button class="torneo-pick-cerrar" id="torneoCerrarPicker">✕</button>
+            </div>
+            <div class="torneo-pick-lista">${itemsPropios}</div>
+            <div class="torneo-pick-reserva">${reservaBloque}</div>
+        </div>`;
+}
+
+
+// ==========================================
+// ENGANCHE DE EVENTOS DEL ARMADO
+// ==========================================
+
+function enganchesArmado(t, uid, abierta) {
+    if (!abierta) return;
+
+    engancharSelectorFormacion(t);
+
+    // Abrir el selector para un slot vacío.
+    cont().querySelectorAll("[data-abrir-slot]").forEach(b =>
+        b.addEventListener("click", () => {
+            slotAbierto = b.dataset.abrirSlot;
+            reservaCandidatos = null;
+            pintar();
+        })
+    );
+
+    // Liberar un jugador del XI.
+    cont().querySelectorAll("[data-liberar]").forEach(b =>
+        b.addEventListener("click", () => onLiberar(t.id, Number(b.dataset.liberar)))
+    );
+
+    // Reclamar un jugador (propio o de reserva).
+    cont().querySelectorAll("[data-reclamar]").forEach(b =>
+        b.addEventListener("click", () => onReclamar(t.id, Number(b.dataset.reclamar)))
+    );
+
+    const cerrar = document.getElementById("torneoCerrarPicker");
+    if (cerrar) cerrar.addEventListener("click", () => { slotAbierto = null; reservaCandidatos = null; pintar(); });
+
+    const verReserva = document.getElementById("torneoVerReserva");
+    if (verReserva) verReserva.addEventListener("click", () => onVerReserva(t.id));
+}
+
+function engancharSelectorFormacion(t) {
+    cont().querySelectorAll("[data-formacion]").forEach(b =>
+        b.addEventListener("click", () => onElegirFormacion(t.id, b.dataset.formacion))
+    );
 }
 
 
@@ -233,10 +526,108 @@ async function onAbrirArmado(torneoId) {
     }
 }
 
+async function onElegirFormacion(torneoId, formacion) {
+    if (ocupado) return;
+    // Cambiar de formación libera lo reclamado: confirmamos si ya había equipo con jugadores.
+    const teniaJugadores = equipoTorneo && Object.values(equipoTorneo.xi || {}).some(Boolean);
+    if (equipoTorneo && formacion === equipoTorneo.formacion) return;   // sin cambios
+    if (teniaJugadores &&
+        !confirm("Cambiar de formación va a liberar los jugadores que reclamaste. ¿Seguís?")) {
+        return;
+    }
+    ocupado = true;
+    try {
+        await elegirFormacionTorneoNube(torneoId, formacion);
+        resetPicker();
+        // El equipo actualizado llega por el listener (escucharEquipoTorneo).
+    } catch (e) {
+        alert(e?.message || "No se pudo elegir la formación.");
+    } finally {
+        ocupado = false;
+    }
+}
+
+async function onReclamar(torneoId, playerId) {
+    if (ocupado || !slotAbierto) return;
+    ocupado = true;
+    try {
+        await reclamarJugadorNube(torneoId, playerId, slotAbierto);
+        slotAbierto = null;
+        reservaCandidatos = null;
+        // El XI actualizado llega por el listener.
+    } catch (e) {
+        alert(e?.message || "No se pudo reclamar al jugador.");
+        pintar();   // refresca el estado (quizás otro lo reclamó recién)
+    } finally {
+        ocupado = false;
+    }
+}
+
+async function onLiberar(torneoId, playerId) {
+    if (ocupado) return;
+    ocupado = true;
+    try {
+        await liberarJugadorNube(torneoId, playerId);
+        // El XI actualizado llega por el listener.
+    } catch (e) {
+        alert(e?.message || "No se pudo liberar al jugador.");
+    } finally {
+        ocupado = false;
+    }
+}
+
+async function onVerReserva(torneoId) {
+    if (cargandoReserva || !slotAbierto) return;
+    const posicion = mapaSlotPosicion(equipoTorneo.formacion)[slotAbierto];
+    cargandoReserva = true;
+    pintar();
+    try {
+        const r = await listarPoolReservaNube(torneoId, posicion);
+        reservaCandidatos = r.candidatos || [];
+    } catch (e) {
+        reservaCandidatos = [];
+        alert(e?.message || "No se pudo cargar el pool de reserva.");
+    } finally {
+        cargandoReserva = false;
+        pintar();
+    }
+}
+
 
 // ==========================================
 // UTILIDADES
 // ==========================================
+
+function volverALista() {
+    detalleId = null;
+    avisoValidacion = "";
+    detenerSubEquipo();
+    resetPicker();
+    pintar();
+}
+
+// ¿La ventana de armado sigue abierta? (ARMADO + fecha de cierre en el futuro).
+function ventanaAbierta(t) {
+    return t.estado === "ARMADO"
+        && t.ventanaArmadoCierra
+        && Date.now() < new Date(t.ventanaArmadoCierra).getTime();
+}
+
+// Texto legible del tiempo que falta para que cierre la ventana.
+function textoTiempoRestante(iso) {
+    const ms = new Date(iso).getTime() - Date.now();
+    if (ms <= 0) return "instantes";
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    return h > 0 ? `${h} h ${m} min` : `${m} min`;
+}
+
+// Mapa slot → posición de una formación (ej. { por1:"POR", def1:"DEF", ... }).
+function mapaSlotPosicion(formacion) {
+    const m = {};
+    for (const { slot, position } of slotsDeFormacion(formacion)) m[slot] = position;
+    return m;
+}
 
 // Escapa texto para no romper el HTML (nombres los eligen los usuarios).
 function escapar(s) {

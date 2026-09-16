@@ -13,9 +13,11 @@
 
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
 import { JUGADORES } from "./juego/data/jugadores.js";
+import { FORMACIONES, slotsDeFormacion } from "./juego/config/formaciones.js";
+import { MENTALIDAD_OF_DEFAULT, MENTALIDAD_DEF_DEFAULT } from "./juego/config/mentalidades.js";
 import {
     abrirPaquete as ecoAbrirPaquete,
     comprarPaquete as ecoComprarPaquete,
@@ -501,4 +503,264 @@ export const abrirArmado = onCall(async (request) => {
     });
 
     return { ok: true, ventanaArmadoCierra: cierra };
+});
+
+
+// ==========================================
+// TORNEOS — armado del equipo con exclusividad (Etapa 9B, §36.1, §37.1, §38)
+// ==========================================
+//
+// Durante la ventana de armado, cada participante arma SU equipo del torneo
+// reclamando jugadores. El primero que reclama a un jugador lo bloquea para el
+// resto (§36.1). El índice de exclusividad vive en el doc del torneo
+// (jugadoresReclamados: playerId → uid); el layout del XI de cada uno vive en
+// la subcolección torneos/{id}/equipos/{uid}. TODO corre en transacción: dos
+// usuarios pueden pedir el mismo jugador en el mismo instante (§38).
+
+// Mapa slot → posición de una formación (ej. { por1:"POR", def1:"DEF", ... }).
+function slotsPorPosicion(formacion) {
+    const m = {};
+    for (const { slot, position } of slotsDeFormacion(formacion)) m[slot] = position;
+    return m;
+}
+
+// Un torneo admite cambios de armado solo en estado ARMADO y con la ventana de
+// 24hs todavía abierta. Cerrada la ventana, el equipo está congelado (§17.3).
+function armadoAbierto(t) {
+    return t.estado === "ARMADO"
+        && t.ventanaArmadoCierra
+        && Date.now() < new Date(t.ventanaArmadoCierra).getTime();
+}
+
+// Exige que el que llama sea participante de un torneo con el armado abierto.
+// Devuelve los datos del torneo. Tira HttpsError con mensaje en español si no.
+function exigirArmadoAbierto(t, uid) {
+    if (!t) throw new HttpsError("not-found", "El torneo no existe.");
+    if (!t.participantes.includes(uid)) throw new HttpsError("permission-denied", "No sos participante de este torneo.");
+    if (t.estado !== "ARMADO") throw new HttpsError("failed-precondition", "El armado de este torneo no está abierto.");
+    if (!armadoAbierto(t)) throw new HttpsError("failed-precondition", "La ventana de armado ya cerró; el equipo quedó congelado.");
+}
+
+// Conjunto de playerIds que ALGÚN participante del torneo posee en su colección.
+// Sirve para el Pool de Reserva (§37.1): reserva = COMÚN que NADIE posee.
+async function idsPoseidosPorTorneo(participantes) {
+    const poseidos = new Set();
+    for (const uid of participantes) {
+        const snap = await db.collection(`users/${uid}/collection`).get();
+        for (const d of snap.docs) poseidos.add(d.data().playerId);
+    }
+    return poseidos;
+}
+
+// Igual que idsPoseidosPorTorneo, pero con lecturas transaccionales (para usar
+// dentro de reclamarJugador, donde las lecturas deben ir antes que las escrituras).
+async function idsPoseidosPorTorneoTx(t, participantes) {
+    const poseidos = new Set();
+    for (const uid of participantes) {
+        const snap = await t.get(db.collection(`users/${uid}/collection`));
+        for (const d of snap.docs) poseidos.add(d.data().playerId);
+    }
+    return poseidos;
+}
+
+// Equipo de torneo vacío para una formación (todos los slots en null).
+function equipoTorneoVacio(formacion) {
+    const xi = {};
+    for (const { slot } of slotsDeFormacion(formacion)) xi[slot] = null;
+    return {
+        schemaVersion: 3,
+        formacion,
+        xi,
+        mentalidadOfensiva: MENTALIDAD_OF_DEFAULT,
+        mentalidadDefensiva: MENTALIDAD_DEF_DEFAULT,
+        reservaUsados: [],
+        actualizadoEn: ahoraISO()
+    };
+}
+
+
+// Elegir / cambiar la formación del equipo del torneo. Cambiar de formación
+// LIBERA todos los jugadores que el usuario tenía reclamados (los slots cambian
+// y quedan a disposición del resto), tal como se decidió con el usuario.
+export const elegirFormacionTorneo = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const torneoId = request.data?.torneoId;
+    const formacion = request.data?.formacion;
+    if (!torneoId) throw new HttpsError("invalid-argument", "Falta el torneo.");
+    if (!FORMACIONES[formacion]) throw new HttpsError("invalid-argument", "Formación inválida.");
+
+    const ref = db.doc(`torneos/${torneoId}`);
+    const equipoRef = db.doc(`torneos/${torneoId}/equipos/${uid}`);
+
+    return db.runTransaction(async (t) => {
+        const torneo = (await t.get(ref)).data();
+        exigirArmadoAbierto(torneo, uid);
+
+        // Liberar todos los reclamos de este usuario (los slots de la nueva
+        // formación son otros): se borran del índice global del torneo.
+        const reclamados = torneo.jugadoresReclamados || {};
+        const liberar = {};
+        for (const [pid, dueno] of Object.entries(reclamados)) {
+            if (dueno === uid) liberar[`jugadoresReclamados.${pid}`] = FieldValue.delete();
+        }
+        if (Object.keys(liberar).length > 0) t.update(ref, liberar);
+
+        // Equipo nuevo y vacío para la formación elegida (se conservan las
+        // mentalidades previas si ya había equipo).
+        const prev = (await t.get(equipoRef)).data();
+        const nuevo = equipoTorneoVacio(formacion);
+        if (prev) {
+            nuevo.mentalidadOfensiva = prev.mentalidadOfensiva || nuevo.mentalidadOfensiva;
+            nuevo.mentalidadDefensiva = prev.mentalidadDefensiva || nuevo.mentalidadDefensiva;
+        }
+        t.set(equipoRef, nuevo);
+
+        return { ok: true, formacion };
+    });
+});
+
+
+// Reclamar un jugador para un slot del XI del torneo (§38, punto crítico).
+// Atómico: valida posesión (o Pool de Reserva §37.1) y exclusividad, y escribe
+// el índice global + el slot del equipo en la MISMA transacción.
+export const reclamarJugador = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const torneoId = request.data?.torneoId;
+    const playerId = request.data?.playerId;
+    const slot = request.data?.slot;
+    if (!torneoId || !slot) throw new HttpsError("invalid-argument", "Faltan datos del reclamo.");
+
+    const player = CATALOGO.get(playerId);
+    if (!player) throw new HttpsError("invalid-argument", "Jugador inválido.");
+
+    const ref = db.doc(`torneos/${torneoId}`);
+    const equipoRef = db.doc(`torneos/${torneoId}/equipos/${uid}`);
+
+    return db.runTransaction(async (t) => {
+        const torneo = (await t.get(ref)).data();
+        exigirArmadoAbierto(torneo, uid);
+
+        const equipo = (await t.get(equipoRef)).data();
+        if (!equipo) throw new HttpsError("failed-precondition", "Elegí una formación antes de reclamar jugadores.");
+
+        // El slot tiene que existir en la formación y ser de la posición del jugador.
+        const posDeSlot = slotsPorPosicion(equipo.formacion);
+        if (!(slot in posDeSlot)) throw new HttpsError("invalid-argument", "Ese puesto no existe en tu formación.");
+        if (posDeSlot[slot] !== player.position) {
+            throw new HttpsError("failed-precondition", "Ese jugador no juega en ese puesto.");
+        }
+
+        // El puesto no puede estar ocupado por OTRO jugador (primero hay que liberar).
+        const ocupante = equipo.xi?.[slot] || null;
+        if (ocupante && ocupante !== playerId) {
+            throw new HttpsError("failed-precondition", "Ese puesto ya tiene un jugador; liberalo primero.");
+        }
+
+        // Exclusividad (§36.1): si otro ya lo reclamó, no se puede.
+        const reclamados = torneo.jugadoresReclamados || {};
+        const duenoActual = reclamados[playerId];
+        if (duenoActual && duenoActual !== uid) {
+            throw new HttpsError("already-exists", "Otro participante ya reclamó a ese jugador.");
+        }
+
+        // Posesión propia, o Pool de Reserva (§37.1).
+        const propioSnap = await t.get(db.doc(`users/${uid}/collection/${String(playerId)}`));
+        const reservaUsados = Array.isArray(equipo.reservaUsados) ? [...equipo.reservaUsados] : [];
+        let esReserva = false;
+
+        if (!propioSnap.exists) {
+            // No lo tenés: solo vale como reserva si es COMÚN, NADIE del torneo lo
+            // posee, y no superás el tope de 3 jugadores de reserva.
+            if (player.rarity !== "COMUN") {
+                throw new HttpsError("permission-denied", "No tenés a ese jugador.");
+            }
+            const poseidos = await idsPoseidosPorTorneoTx(t, torneo.participantes);
+            if (poseidos.has(playerId)) {
+                throw new HttpsError("permission-denied", "Ese jugador no está disponible como reserva.");
+            }
+            if (!reservaUsados.includes(playerId) && reservaUsados.length >= 3) {
+                throw new HttpsError("failed-precondition", "Llegaste al máximo de 3 jugadores de reserva (§37.1).");
+            }
+            esReserva = true;
+            if (!reservaUsados.includes(playerId)) reservaUsados.push(playerId);
+        }
+
+        // Escribir: índice global del torneo + slot del equipo (misma transacción).
+        t.update(ref, { [`jugadoresReclamados.${playerId}`]: uid });
+        t.set(equipoRef, {
+            [`xi.${slot}`]: playerId,
+            reservaUsados,
+            actualizadoEn: ahoraISO()
+        }, { merge: true });
+
+        return { ok: true, playerId, slot, esReserva };
+    });
+});
+
+
+// Liberar un jugador del XI del torneo (§39): vuelve al pool disponible y su
+// slot queda vacío. Solo con la ventana abierta.
+export const liberarJugador = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const torneoId = request.data?.torneoId;
+    const playerId = request.data?.playerId;
+    if (!torneoId || playerId === undefined) throw new HttpsError("invalid-argument", "Faltan datos.");
+
+    const ref = db.doc(`torneos/${torneoId}`);
+    const equipoRef = db.doc(`torneos/${torneoId}/equipos/${uid}`);
+
+    return db.runTransaction(async (t) => {
+        const torneo = (await t.get(ref)).data();
+        exigirArmadoAbierto(torneo, uid);
+
+        const reclamados = torneo.jugadoresReclamados || {};
+        if (reclamados[playerId] !== uid) {
+            throw new HttpsError("failed-precondition", "No tenés reclamado a ese jugador.");
+        }
+
+        const equipo = (await t.get(equipoRef)).data() || { xi: {}, reservaUsados: [] };
+
+        // Vaciar el slot que lo tenía y sacarlo de la lista de reserva.
+        const cambios = { actualizadoEn: ahoraISO() };
+        for (const [slot, pid] of Object.entries(equipo.xi || {})) {
+            if (pid === playerId) cambios[`xi.${slot}`] = null;
+        }
+        const reservaUsados = (equipo.reservaUsados || []).filter(id => id !== playerId);
+
+        t.update(ref, { [`jugadoresReclamados.${playerId}`]: FieldValue.delete() });
+        t.set(equipoRef, { ...cambios, reservaUsados }, { merge: true });
+
+        return { ok: true, playerId };
+    });
+});
+
+
+// Pool de Reserva (§37.1): jugadores COMÚN reales que NINGÚN participante posee,
+// para una posición, todavía sin reclamar. El cliente no puede calcularlo (no lee
+// las colecciones ajenas), así que lo arma el servidor y lo devuelve.
+export const listarPoolReserva = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const torneoId = request.data?.torneoId;
+    const posicion = request.data?.posicion;
+    if (!torneoId) throw new HttpsError("invalid-argument", "Falta el torneo.");
+    if (!["POR", "DEF", "MED", "DEL"].includes(posicion)) {
+        throw new HttpsError("invalid-argument", "Posición inválida.");
+    }
+
+    const torneo = (await db.doc(`torneos/${torneoId}`).get()).data();
+    if (!torneo) throw new HttpsError("not-found", "El torneo no existe.");
+    if (!torneo.participantes.includes(uid)) throw new HttpsError("permission-denied", "No sos participante.");
+
+    const poseidos = await idsPoseidosPorTorneo(torneo.participantes);
+    const reclamados = torneo.jugadoresReclamados || {};
+
+    const candidatos = JUGADORES
+        .filter(j => j.position === posicion
+            && j.rarity === "COMUN"
+            && !poseidos.has(j.id)
+            && !reclamados[j.id])
+        .map(j => ({ id: j.id, name: j.name, club: j.club, overall: j.overall, position: j.position }))
+        .sort((a, b) => (b.overall || 0) - (a.overall || 0));
+
+    return { candidatos };
 });

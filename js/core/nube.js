@@ -210,3 +210,41 @@ export async function abrirArmadoNube(torneoId) {
     const res = await llamar("abrirArmado")({ torneoId });
     return res.data;
 }
+
+
+// ==========================================
+// TORNEOS — armado del equipo (Etapa 9B, §36.1, §37.1, §38)
+// ==========================================
+
+// Escucha en vivo MI equipo del torneo (torneos/{id}/equipos/{uid}). `cb(equipo|null)`.
+export function escucharEquipoTorneo(torneoId, uid, cb) {
+    return onSnapshot(
+        doc(db, "torneos", torneoId, "equipos", uid),
+        snap => cb(snap.exists() ? snap.data() : null),
+        err => console.error("[nube] Error escuchando el equipo del torneo:", err)
+    );
+}
+
+// Elegí / cambiá la formación del torneo (cambiarla libera tus reclamos).
+export async function elegirFormacionTorneoNube(torneoId, formacion) {
+    const res = await llamar("elegirFormacionTorneo")({ torneoId, formacion });
+    return res.data;
+}
+
+// Reclamá un jugador para un slot del XI del torneo (§38). Devuelve { ok, esReserva }.
+export async function reclamarJugadorNube(torneoId, playerId, slot) {
+    const res = await llamar("reclamarJugador")({ torneoId, playerId, slot });
+    return res.data;
+}
+
+// Liberá un jugador del XI del torneo (§39).
+export async function liberarJugadorNube(torneoId, playerId) {
+    const res = await llamar("liberarJugador")({ torneoId, playerId });
+    return res.data;
+}
+
+// Pool de Reserva (§37.1): candidatos COMÚN que nadie posee, para una posición.
+export async function listarPoolReservaNube(torneoId, posicion) {
+    const res = await llamar("listarPoolReserva")({ torneoId, posicion });
+    return res.data;
+}

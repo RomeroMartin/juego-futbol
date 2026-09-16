@@ -2903,3 +2903,166 @@ main {
 }
 
 .torneo-detalle .main-button { margin-top: 18px; }
+
+
+/* ==========================================
+   TORNEOS — armado del equipo (Etapa 9B)
+   ========================================== */
+
+/* Botonera de formaciones */
+.torneo-formaciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 8px 0 4px;
+}
+
+.torneo-form-btn {
+    flex: 1 1 auto;
+    min-width: 72px;
+    padding: 9px 10px;
+    background: var(--surface-light);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--white);
+    font-weight: bold;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.torneo-form-btn:hover { border-color: var(--green); }
+.torneo-form-btn.activa {
+    background: rgba(36, 208, 111, 0.16);
+    border-color: var(--green);
+    color: var(--green);
+}
+
+/* La cancha: líneas de arriba (ataque) hacia abajo (arco) */
+.torneo-cancha {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 10px;
+    background: rgba(36, 208, 111, 0.05);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-top: 6px;
+}
+
+.torneo-linea {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.torneo-slot {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 92px;
+    max-width: 150px;
+    min-height: 58px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 8px 6px;
+    border-radius: 8px;
+    text-align: center;
+    font: inherit;
+}
+
+.torneo-slot.ocupado {
+    background: var(--surface-light);
+    border: 1px solid var(--green);
+    color: var(--white);
+}
+
+.torneo-slot.ocupado strong { font-size: 12px; line-height: 1.2; }
+.torneo-slot.ocupado small { font-size: 10px; color: var(--muted); }
+
+.torneo-slot.vacio {
+    background: transparent;
+    border: 1px dashed rgba(255,255,255,0.25);
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.torneo-slot.vacio:hover:not([disabled]) { border-color: var(--green); color: var(--green); }
+.torneo-slot.vacio[disabled] { opacity: 0.5; cursor: default; }
+
+.torneo-slot-x {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: none;
+    background: #b23a3a;
+    color: var(--white);
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+/* Selector de jugador (picker) */
+.torneo-picker {
+    margin-top: 16px;
+    background: var(--surface);
+    border: 1px solid var(--green);
+    border-radius: 12px;
+    padding: 12px;
+}
+
+.torneo-picker-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.torneo-pick-cerrar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--surface-light);
+    color: var(--white);
+    cursor: pointer;
+}
+
+.torneo-pick-lista { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+
+.torneo-pick-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 12px;
+    background: var(--surface-light);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--white);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.torneo-pick-item:hover { border-color: var(--green); }
+.torneo-pick-item small { color: var(--muted); font-size: 11px; }
+.torneo-pick-item strong { color: var(--green); }
+.torneo-pick-item.reserva { border-style: dashed; }
+
+.torneo-pick-item.tomado {
+    cursor: default;
+    opacity: 0.6;
+}
+.torneo-pick-item.tomado:hover { border-color: var(--border); }
+.torneo-pick-item.tomado em { color: var(--muted); font-size: 11px; font-style: italic; }
+
+.torneo-pick-reserva { margin-top: 12px; }
+.torneo-pick-reserva .secondary-button { width: 100%; margin: 0; }
