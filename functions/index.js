@@ -690,9 +690,12 @@ export const reclamarJugador = onCall(async (request) => {
         }
 
         // Escribir: índice global del torneo + slot del equipo (misma transacción).
+        // OJO: en set(merge) una clave con punto ("xi.def1") NO es un campo anidado
+        // (eso es solo en update), así que escribimos el mapa xi COMPLETO.
+        const nuevoXi = { ...(equipo.xi || {}), [slot]: playerId };
         t.update(ref, { [`jugadoresReclamados.${playerId}`]: uid });
         t.set(equipoRef, {
-            [`xi.${slot}`]: playerId,
+            xi: nuevoXi,
             reservaUsados,
             actualizadoEn: ahoraISO()
         }, { merge: true });
@@ -724,15 +727,16 @@ export const liberarJugador = onCall(async (request) => {
 
         const equipo = (await t.get(equipoRef)).data() || { xi: {}, reservaUsados: [] };
 
-        // Vaciar el slot que lo tenía y sacarlo de la lista de reserva.
-        const cambios = { actualizadoEn: ahoraISO() };
-        for (const [slot, pid] of Object.entries(equipo.xi || {})) {
-            if (pid === playerId) cambios[`xi.${slot}`] = null;
+        // Vaciar el slot que lo tenía (escribimos el mapa xi COMPLETO: en set(merge)
+        // una clave con punto no es campo anidado) y sacarlo de la reserva.
+        const nuevoXi = { ...(equipo.xi || {}) };
+        for (const slot of Object.keys(nuevoXi)) {
+            if (nuevoXi[slot] === playerId) nuevoXi[slot] = null;
         }
         const reservaUsados = (equipo.reservaUsados || []).filter(id => id !== playerId);
 
         t.update(ref, { [`jugadoresReclamados.${playerId}`]: FieldValue.delete() });
-        t.set(equipoRef, { ...cambios, reservaUsados }, { merge: true });
+        t.set(equipoRef, { xi: nuevoXi, reservaUsados, actualizadoEn: ahoraISO() }, { merge: true });
 
         return { ok: true, playerId };
     });

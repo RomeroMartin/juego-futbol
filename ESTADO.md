@@ -307,6 +307,15 @@ Modificados:
   fecha** simula la fecha y actualiza la tabla; cambiar mentalidad antes de la
   fecha; al terminar todas las fechas → `FINALIZADO` con el campeón.
 
+### Fix importante — persistencia del XI del torneo (servidor)
+- **Bug:** en `reclamarJugador`/`liberarJugador` se escribía el slot con
+  `t.set(equipoRef, { ["xi."+slot]: valor }, {merge:true})`. En `set(merge)` una
+  clave con punto NO es un campo anidado (eso es solo en `update`), así que el
+  mapa `xi` real nunca se actualizaba: cada jugador nuevo "borraba" al anterior y
+  no se podía tener más de uno en el equipo.
+- **Fix:** ahora se lee `equipo.xi`, se arma el mapa completo y se escribe
+  `{ xi: nuevoXi }` (correcto con `set(merge)`). Requiere **deploy de functions**.
+
 ### Ajustes de UX (post-deploy 10A, mismo alcance)
 - **Aviso en pantalla** en el armado en lugar de `alert()` (en mobile los `alert`
   de error no se veían → parecía que "no pasaba nada" al reclamar). Ahora
