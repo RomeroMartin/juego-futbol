@@ -288,6 +288,9 @@ function pintarArmado(c, t, uid) {
     // Selector de jugador para un slot (solo con ventana abierta).
     const picker = (abierta && slotAbierto) ? pintarPicker(t, uid, posDeSlot[slotAbierto]) : "";
 
+    // Selector de mentalidad (§17.3): editable durante el armado y entre fechas.
+    const mentalidad = pintarSelectorMentalidad();
+
     // Botón de iniciar el torneo (solo el creador). Al iniciar se cierra el
     // armado, se genera el fixture y se juega la primera fecha (§40, §41).
     const esCreador = t.creadorId === uid;
@@ -312,6 +315,7 @@ function pintarArmado(c, t, uid) {
             <h3>Tu equipo del torneo (${formacion})</h3>
             ${cancha}
             ${picker}
+            ${mentalidad}
             ${iniciar}
         </div>
     `;
@@ -324,6 +328,9 @@ function pintarArmado(c, t, uid) {
 
     const btnCopiar = document.getElementById("torneoCopiarIA");
     if (btnCopiar) btnCopiar.addEventListener("click", () => onCopiarEquipoIA(t));
+
+    const btnMent = document.getElementById("torneoGuardarMent");
+    if (btnMent) btnMent.addEventListener("click", () => onGuardarMentalidad(t.id));
 }
 
 
@@ -510,6 +517,7 @@ function pintarCompeticion(c, t, uid) {
             <span class="eyebrow">${ESTADO_ETIQUETA[t.estado]}${finalizado ? "" : ` · Fecha ${t.fechaActual}/${totalFechas}`}</span>
             <h2>${escapar(t.nombre)}</h2>
             ${cabecera}
+            ${bannerMensaje()}
 
             <h3>Tabla de posiciones</h3>
             ${pintarTabla(t, uid)}
@@ -843,30 +851,34 @@ async function onIniciarTorneo(t, abierta) {
         : "Se va a generar el fixture y arrancar la liga. ¿Seguís?";
     if (!confirm(msg)) return;
     ocupado = true;
+    mensajeArmado = null;
     try {
         const r = await iniciarTorneoNube(t.id);
         if (r && r.ok === false) {
-            alert("Todavía no se puede iniciar. Estos participantes no completaron su equipo:\n\n"
-                + (r.incompletos || []).join(", "));
+            mensajeArmado = { tipo: "error", texto: "Todavía no se puede iniciar. No completaron su equipo: "
+                + (r.incompletos || []).join(", ") + "." };
         }
         // El paso a EN_CURSO llega por el listener.
     } catch (e) {
-        alert(e?.message || "No se pudo iniciar el torneo.");
+        mensajeArmado = { tipo: "error", texto: e?.message || "No se pudo iniciar el torneo." };
     } finally {
         ocupado = false;
+        pintar();
     }
 }
 
 async function onAvanzarFecha(torneoId) {
     if (ocupado) return;
     ocupado = true;
+    mensajeArmado = null;
     try {
         await avanzarFechaNube(torneoId);
         // Resultados y tabla llegan por el listener.
     } catch (e) {
-        alert(e?.message || "No se pudo jugar la fecha.");
+        mensajeArmado = { tipo: "error", texto: e?.message || "No se pudo jugar la fecha." };
     } finally {
         ocupado = false;
+        pintar();
     }
 }
 
@@ -876,13 +888,15 @@ async function onGuardarMentalidad(torneoId) {
     const def = document.getElementById("mentDef")?.value;
     if (!of || !def) return;
     ocupado = true;
+    mensajeArmado = null;
     try {
         await guardarMentalidadTorneoNube(torneoId, of, def);
-        alert("Mentalidad guardada para la próxima fecha.");
+        mensajeArmado = { tipo: "ok", texto: "Mentalidad guardada." };
     } catch (e) {
-        alert(e?.message || "No se pudo guardar la mentalidad.");
+        mensajeArmado = { tipo: "error", texto: e?.message || "No se pudo guardar la mentalidad." };
     } finally {
         ocupado = false;
+        pintar();
     }
 }
 

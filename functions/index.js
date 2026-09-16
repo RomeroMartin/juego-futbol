@@ -597,8 +597,10 @@ export const elegirFormacionTorneo = onCall(async (request) => {
     const equipoRef = db.doc(`torneos/${torneoId}/equipos/${uid}`);
 
     return db.runTransaction(async (t) => {
+        // TODAS las lecturas primero (Firestore exige leer antes de escribir).
         const torneo = (await t.get(ref)).data();
         exigirArmadoAbierto(torneo, uid);
+        const prev = (await t.get(equipoRef)).data();
 
         // Liberar todos los reclamos de este usuario (los slots de la nueva
         // formación son otros): se borran del índice global del torneo.
@@ -607,16 +609,17 @@ export const elegirFormacionTorneo = onCall(async (request) => {
         for (const [pid, dueno] of Object.entries(reclamados)) {
             if (dueno === uid) liberar[`jugadoresReclamados.${pid}`] = FieldValue.delete();
         }
-        if (Object.keys(liberar).length > 0) t.update(ref, liberar);
 
         // Equipo nuevo y vacío para la formación elegida (se conservan las
         // mentalidades previas si ya había equipo).
-        const prev = (await t.get(equipoRef)).data();
         const nuevo = equipoTorneoVacio(formacion);
         if (prev) {
             nuevo.mentalidadOfensiva = prev.mentalidadOfensiva || nuevo.mentalidadOfensiva;
             nuevo.mentalidadDefensiva = prev.mentalidadDefensiva || nuevo.mentalidadDefensiva;
         }
+
+        // Ahora sí, las escrituras.
+        if (Object.keys(liberar).length > 0) t.update(ref, liberar);
         t.set(equipoRef, nuevo);
 
         return { ok: true, formacion };

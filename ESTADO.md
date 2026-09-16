@@ -316,6 +316,20 @@ Modificados:
 - **Fix:** ahora se lee `equipo.xi`, se arma el mapa completo y se escribe
   `{ xi: nuevoXi }` (correcto con `set(merge)`). Requiere **deploy de functions**.
 
+### Fix — "INTERNAL" al cambiar de formación / copiar equipo (servidor)
+- **Bug:** `elegirFormacionTorneo` hacía `t.update(ref, liberar)` (escritura) y
+  después `t.get(equipoRef)` (lectura) en la misma transacción. Firestore exige
+  todas las lecturas ANTES que las escrituras → lanzaba `INTERNAL` cuando el
+  usuario ya tenía jugadores reclamados (p. ej. al usar "Copiar equipo del modo
+  normal", que primero fija la formación).
+- **Fix:** se reordenó (todas las lecturas primero). Requiere deploy de functions.
+
+### Mentalidad editable en el armado (cliente)
+- El selector de mentalidad (ofensiva/defensiva) ahora también aparece **durante
+  el armado**, no solo entre fechas (§17.3; `guardarMentalidadTorneo` ya lo
+  permitía en estado ARMADO). Los avisos de iniciar/avanzar/mentalidad pasaron a
+  banner en pantalla (mobile-friendly).
+
 ### Ajustes de UX (post-deploy 10A, mismo alcance)
 - **Aviso en pantalla** en el armado en lugar de `alert()` (en mobile los `alert`
   de error no se veían → parecía que "no pasaba nada" al reclamar). Ahora
