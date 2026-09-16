@@ -17,7 +17,11 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
 import { JUGADORES } from "./juego/data/jugadores.js";
 import { FORMACIONES, slotsDeFormacion } from "./juego/config/formaciones.js";
-import { MENTALIDAD_OF_DEFAULT, MENTALIDAD_DEF_DEFAULT } from "./juego/config/mentalidades.js";
+import {
+    MENTALIDAD_OF_DEFAULT, MENTALIDAD_DEF_DEFAULT,
+    CLAVES_OFENSIVA, CLAVES_DEFENSIVA
+} from "./juego/config/mentalidades.js";
+import { simularPartido } from "./juego/core/motor.js";
 import {
     abrirPaquete as ecoAbrirPaquete,
     comprarPaquete as ecoComprarPaquete,
@@ -763,4 +767,278 @@ export const listarPoolReserva = onCall(async (request) => {
         .sort((a, b) => (b.overall || 0) - (a.overall || 0));
 
     return { candidatos };
+});
+
+
+// ==========================================
+// TORNEOS — competencia: jugar la liga (Etapa 10A, §40–§42)
+// ==========================================
+//
+// El fixture y los partidos se juegan EN EL SERVIDOR (§41.4), nunca en el
+// cliente: el motor es determinista (mulberry32, §23) y la semilla de cada
+// partido se deriva del torneo (reproducible y verificable). El cliente solo
+// pide avanzar la fecha y lee el resultado.
+
+// Puntos de la tabla (§42). No es economía (Fichas): es el puntaje deportivo
+// estándar del fútbol, se usa solo para ordenar la tabla.
+const PUNTOS_TABLA = { V: 3, E: 1, D: 0 };
+
+// ¿El equipo del torneo tiene el XI completo para su formación?
+function xiCompleto(equipoDoc) {
+    if (!equipoDoc || !equipoDoc.formacion) return false;
+    return slotsDeFormacion(equipoDoc.formacion).every(({ slot }) => equipoDoc.xi && equipoDoc.xi[slot]);
+}
+
+// Arma el equipo en el formato que espera el motor a partir del doc del equipo
+// del torneo (xi: slot → playerId).
+function equipoMotorDesdeDoc(equipoDoc, id) {
+    const posDeSlot = slotsPorPosicion(equipoDoc.formacion);
+    const grupos = { POR: [], DEF: [], MED: [], DEL: [] };
+    for (const [slot, pid] of Object.entries(equipoDoc.xi || {})) {
+        if (pid == null) continue;
+        const pl = CATALOGO.get(pid);
+        if (pl && grupos[posDeSlot[slot]]) grupos[posDeSlot[slot]].push(pl);
+    }
+    return {
+        id,
+        arquero: grupos.POR[0],
+        defensores: grupos.DEF,
+        medios: grupos.MED,
+        delanteros: grupos.DEL,
+        formacion: equipoDoc.formacion,
+        mentalidadOfensiva: equipoDoc.mentalidadOfensiva || MENTALIDAD_OF_DEFAULT,
+        mentalidadDefensiva: equipoDoc.mentalidadDefensiva || MENTALIDAD_DEF_DEFAULT
+    };
+}
+
+// Fixture de liga (todos contra todos, ida) por el método del círculo. Con N
+// impar se agrega un "libre" (null) que descansa. Alterna la localía por ronda.
+function generarFixture(participantes) {
+    const arr = [...participantes];
+    if (arr.length % 2 !== 0) arr.push(null);   // fecha libre
+    const n = arr.length;
+    const mitad = n / 2;
+    const fixture = [];
+
+    for (let r = 0; r < n - 1; r++) {
+        const partidos = [];
+        for (let i = 0; i < mitad; i++) {
+            const a = arr[i];
+            const b = arr[n - 1 - i];
+            if (a !== null && b !== null) {
+                const local = (r % 2 === 0) ? a : b;
+                const visitante = (r % 2 === 0) ? b : a;
+                partidos.push({
+                    id: `f${r + 1}-${partidos.length + 1}`,
+                    local, visitante,
+                    golesLocal: null, golesVisitante: null, semilla: null
+                });
+            }
+        }
+        fixture.push({ fecha: r + 1, partidos });
+        // Rotar dejando fijo el primer elemento.
+        const fijo = arr[0];
+        const resto = arr.slice(1);
+        resto.unshift(resto.pop());
+        arr.length = 0;
+        arr.push(fijo, ...resto);
+    }
+    return fixture;
+}
+
+// Semilla determinista por partido (§23): no usa Math.random, así el resultado
+// es reproducible y cualquiera puede re-verificarlo. Hash FNV-1a de torneo+partido.
+function semillaPartido(torneoId, partidoId) {
+    const s = `${torneoId}:${partidoId}`;
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0) || 1;
+}
+
+// Desempate por enfrentamiento directo (§42): negativo si `a` va arriba de `b`.
+function enfrentamientoDirecto(a, b, fixture) {
+    for (const f of fixture) {
+        for (const pt of f.partidos) {
+            if (pt.golesLocal == null) continue;
+            if (pt.local === a.uid && pt.visitante === b.uid) return pt.golesVisitante - pt.golesLocal;
+            if (pt.local === b.uid && pt.visitante === a.uid) return pt.golesLocal - pt.golesVisitante;
+        }
+    }
+    return 0;
+}
+
+// Tabla de posiciones (§42) a partir de los partidos jugados del fixture.
+// Desempate: puntos → diferencia de gol → goles a favor → enfrentamiento directo.
+function calcularTabla(participantes, nombres, fixture) {
+    const fila = {};
+    for (const uid of participantes) {
+        fila[uid] = { uid, nombre: nombres?.[uid] || "Jugador", pj: 0, g: 0, e: 0, p: 0, gf: 0, gc: 0, dg: 0, pts: 0 };
+    }
+    for (const f of fixture) {
+        for (const pt of f.partidos) {
+            if (pt.golesLocal == null || pt.golesVisitante == null) continue;
+            const L = fila[pt.local], V = fila[pt.visitante];
+            if (!L || !V) continue;
+            L.pj++; V.pj++;
+            L.gf += pt.golesLocal; L.gc += pt.golesVisitante;
+            V.gf += pt.golesVisitante; V.gc += pt.golesLocal;
+            if (pt.golesLocal > pt.golesVisitante) { L.g++; V.p++; L.pts += PUNTOS_TABLA.V; }
+            else if (pt.golesLocal < pt.golesVisitante) { V.g++; L.p++; V.pts += PUNTOS_TABLA.V; }
+            else { L.e++; V.e++; L.pts += PUNTOS_TABLA.E; V.pts += PUNTOS_TABLA.E; }
+        }
+    }
+    const tabla = Object.values(fila);
+    for (const r of tabla) r.dg = r.gf - r.gc;
+    tabla.sort((a, b) =>
+        b.pts - a.pts
+        || b.dg - a.dg
+        || b.gf - a.gf
+        || enfrentamientoDirecto(a, b, fixture)
+        || a.nombre.localeCompare(b.nombre)
+    );
+    return tabla;
+}
+
+
+// Iniciar el torneo: cierra el armado, genera el fixture de liga y pasa a
+// EN_CURSO. Solo el creador. Si a alguien le falta completar su XI, devuelve
+// { ok:false, incompletos } sin iniciar.
+export const iniciarTorneo = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const torneoId = request.data?.torneoId;
+    if (!torneoId) throw new HttpsError("invalid-argument", "Falta el torneo.");
+
+    const ref = db.doc(`torneos/${torneoId}`);
+
+    return db.runTransaction(async (t) => {
+        const torneo = (await t.get(ref)).data();
+        if (!torneo) throw new HttpsError("not-found", "El torneo no existe.");
+        if (torneo.creadorId !== uid) throw new HttpsError("permission-denied", "Solo el creador puede iniciar el torneo.");
+        if (torneo.estado !== "ARMADO") throw new HttpsError("failed-precondition", "El torneo no está en armado.");
+
+        // Todos tienen que tener el XI completo (los forfeits llegan en la 10B).
+        const incompletos = [];
+        for (const p of torneo.participantes) {
+            const eq = (await t.get(db.doc(`torneos/${torneoId}/equipos/${p}`))).data();
+            if (!xiCompleto(eq)) incompletos.push(torneo.nombres?.[p] || "Jugador");
+        }
+        if (incompletos.length > 0) return { ok: false, incompletos };
+
+        const fixture = generarFixture(torneo.participantes);
+        const tabla = calcularTabla(torneo.participantes, torneo.nombres, fixture);
+
+        t.update(ref, {
+            estado: "EN_CURSO",
+            fixture,
+            tabla,
+            fechaActual: 1,
+            totalFechas: fixture.length,
+            ultimoAvanceEn: ahoraISO()
+        });
+
+        return { ok: true, totalFechas: fixture.length };
+    });
+});
+
+
+// Avanzar (jugar) la fecha actual: simula todos sus partidos en el servidor con
+// semilla determinista, actualiza la tabla y pasa a la fecha siguiente (o
+// FINALIZADO). La dispara el creador (§41.1) o cualquiera tras 5 días sin avance
+// (§41.2). Las recompensas al finalizar llegan en la Etapa 10B (§43).
+export const avanzarFecha = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const torneoId = request.data?.torneoId;
+    if (!torneoId) throw new HttpsError("invalid-argument", "Falta el torneo.");
+
+    const ref = db.doc(`torneos/${torneoId}`);
+
+    return db.runTransaction(async (t) => {
+        const torneo = (await t.get(ref)).data();
+        if (!torneo) throw new HttpsError("not-found", "El torneo no existe.");
+        if (!torneo.participantes.includes(uid)) throw new HttpsError("permission-denied", "No sos participante.");
+        if (torneo.estado !== "EN_CURSO") throw new HttpsError("failed-precondition", "El torneo no está en curso.");
+
+        const esCreador = torneo.creadorId === uid;
+        const diasSinAvance = torneo.ultimoAvanceEn
+            ? (Date.now() - new Date(torneo.ultimoAvanceEn).getTime()) / 86400000
+            : Infinity;
+        if (!esCreador && diasSinAvance < (torneo.forzadoPorInactividadDias || 5)) {
+            throw new HttpsError("permission-denied",
+                "Solo el creador avanza la fecha (o cualquiera tras 5 días sin avance).");
+        }
+
+        const fixture = torneo.fixture || [];
+        const fecha = torneo.fechaActual || 1;
+        const idx = fecha - 1;
+        if (idx < 0 || idx >= fixture.length) throw new HttpsError("failed-precondition", "No hay más fechas para jugar.");
+
+        // Equipos de los que juegan esta fecha (congelados, se leen tal cual).
+        const jornada = fixture[idx];
+        const uids = new Set();
+        for (const pt of jornada.partidos) { uids.add(pt.local); uids.add(pt.visitante); }
+        const equipos = {};
+        for (const p of uids) equipos[p] = (await t.get(db.doc(`torneos/${torneoId}/equipos/${p}`))).data();
+
+        // Simular en el servidor (§41.4) los partidos aún sin jugar.
+        for (const pt of jornada.partidos) {
+            if (pt.golesLocal != null) continue;
+            const semilla = semillaPartido(torneoId, pt.id);
+            const r = simularPartido(
+                equipoMotorDesdeDoc(equipos[pt.local], pt.local),
+                equipoMotorDesdeDoc(equipos[pt.visitante], pt.visitante),
+                semilla
+            );
+            pt.semilla = semilla;
+            pt.golesLocal = r.golesA;
+            pt.golesVisitante = r.golesB;
+        }
+
+        const tabla = calcularTabla(torneo.participantes, torneo.nombres, fixture);
+        const siguiente = fecha + 1;
+        const finalizado = siguiente > fixture.length;
+
+        t.update(ref, {
+            fixture,
+            tabla,
+            fechaActual: finalizado ? fixture.length : siguiente,
+            estado: finalizado ? "FINALIZADO" : "EN_CURSO",
+            ultimoAvanceEn: ahoraISO()
+        });
+
+        return { ok: true, fechaJugada: fecha, finalizado };
+    });
+});
+
+
+// Cambiar la mentalidad del equipo del torneo antes de una fecha (§17.3): la
+// formación y el XI siguen congelados; solo la mentalidad es editable.
+export const guardarMentalidadTorneo = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const torneoId = request.data?.torneoId;
+    const mentalidadOfensiva = request.data?.mentalidadOfensiva;
+    const mentalidadDefensiva = request.data?.mentalidadDefensiva;
+    if (!torneoId) throw new HttpsError("invalid-argument", "Falta el torneo.");
+    if (!CLAVES_OFENSIVA.includes(mentalidadOfensiva) || !CLAVES_DEFENSIVA.includes(mentalidadDefensiva)) {
+        throw new HttpsError("invalid-argument", "Mentalidad inválida.");
+    }
+
+    const ref = db.doc(`torneos/${torneoId}`);
+    const equipoRef = db.doc(`torneos/${torneoId}/equipos/${uid}`);
+
+    return db.runTransaction(async (t) => {
+        const torneo = (await t.get(ref)).data();
+        if (!torneo) throw new HttpsError("not-found", "El torneo no existe.");
+        if (!torneo.participantes.includes(uid)) throw new HttpsError("permission-denied", "No sos participante.");
+        if (!["ARMADO", "EN_CURSO"].includes(torneo.estado)) {
+            throw new HttpsError("failed-precondition", "El torneo no admite cambios de mentalidad.");
+        }
+        const eq = (await t.get(equipoRef)).data();
+        if (!eq) throw new HttpsError("failed-precondition", "Todavía no armaste tu equipo.");
+
+        t.set(equipoRef, { mentalidadOfensiva, mentalidadDefensiva, actualizadoEn: ahoraISO() }, { merge: true });
+        return { ok: true };
+    });
 });

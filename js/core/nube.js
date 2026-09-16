@@ -248,3 +248,27 @@ export async function listarPoolReservaNube(torneoId, posicion) {
     const res = await llamar("listarPoolReserva")({ torneoId, posicion });
     return res.data;
 }
+
+
+// ==========================================
+// TORNEOS — competencia: jugar la liga (Etapa 10A, §40–§42)
+// ==========================================
+
+// Inicia el torneo: cierra el armado y genera el fixture. Devuelve { ok } o
+// { ok:false, incompletos } si a alguien le falta completar su XI.
+export async function iniciarTorneoNube(torneoId) {
+    const res = await llamar("iniciarTorneo")({ torneoId });
+    return res.data;
+}
+
+// Juega (simula) la fecha actual. Devuelve { ok, fechaJugada, finalizado }.
+export async function avanzarFechaNube(torneoId) {
+    const res = await llamar("avanzarFecha")({ torneoId });
+    return res.data;
+}
+
+// Cambia la mentalidad del equipo del torneo antes de una fecha (§17.3).
+export async function guardarMentalidadTorneoNube(torneoId, mentalidadOfensiva, mentalidadDefensiva) {
+    const res = await llamar("guardarMentalidadTorneo")({ torneoId, mentalidadOfensiva, mentalidadDefensiva });
+    return res.data;
+}

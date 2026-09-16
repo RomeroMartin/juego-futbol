@@ -1,12 +1,13 @@
-# ESTADO — Después de la Etapa 9B (Torneos: armado del equipo) 🏆
+# ESTADO — Después de la Etapa 10A (Torneos: jugar la liga) 🏆⚽
 
-> **Última sesión: Etapa 9B** (reclamar jugadores con exclusividad, Pool de
-> Reserva, formación del torneo y congelado del XI al cerrar la ventana). El
-> detalle está en la **sección 8**, al final. La **sección 7** es la Etapa 9A
-> (sala) y sigue vigente; las **secciones 1–6** son de la Etapa 8.
+> **Última sesión: Etapa 10A** (fixture de liga, jugar/avanzar fechas con
+> simulación en el servidor, tabla de posiciones y mentalidad editable por fecha).
+> El detalle está en la **sección 9**, al final. Secciones previas: **8** = 9B
+> (armado con exclusividad), **7** = 9A (sala), **1–6** = Etapa 8.
 >
-> **Sigue: Etapa 10** — generar el fixture, avanzar/**jugar las fechas**, tabla y
-> premios. Recién ahí el grupo juega el torneo de punta a punta.
+> **Sigue: Etapa 10B** — recompensas al finalizar (§43), sobre pre-partido de
+> torneo (§15.2), puntos por partido (§15.3), abandono 0-3 (§39) y amistosos
+> entre usuarios (§32).
 
 ---
 
@@ -240,3 +241,79 @@ Modificados:
 - Al abandonar con el torneo en curso: partidos restantes 0-3 (§39); los
   jugadores **no** se liberan (§39).
 - Recordar la **duplicación cliente/servidor** si se toca `config/` o el motor.
+
+---
+
+## 9. Etapa 10A — Torneos: jugar la liga (§40–§42)
+
+### Qué se implementó
+- El torneo ya se **juega de punta a punta**: fixture de liga, fechas jugadas en el
+  servidor y tabla de posiciones en vivo. (Recompensas, sobres, puntos, abandono y
+  amistosos son la **Etapa 10B**.)
+- **3 Cloud Functions nuevas** (`functions/index.js`):
+  - `iniciarTorneo(torneoId)` — el creador cierra el armado y arranca: valida que
+    **todos** tengan el XI completo (si no, devuelve `{ok:false, incompletos}`),
+    **genera el fixture** (liga todos contra todos, ida, método del círculo),
+    inicializa la tabla y pasa a `EN_CURSO` con `fechaActual: 1`. Puede iniciarse
+    aunque la ventana de 24 hs no haya vencido (la cierra en el acto).
+  - `avanzarFecha(torneoId)` — **juega la fecha actual**: simula sus partidos en el
+    servidor (§41.4) con **semilla determinista por partido** (FNV-1a de
+    `torneoId:partidoId`, reproducible y verificable, sin `Math.random`), actualiza
+    la tabla (§42) y avanza a la fecha siguiente o pasa a `FINALIZADO`. La dispara
+    el creador (§41.1) o cualquiera tras 5 días sin avance (§41.2).
+  - `guardarMentalidadTorneo(torneoId, of, def)` — mentalidad editable entre fechas
+    (§17.3); formación y XI siguen congelados.
+- **Tabla (§42):** puntos 3/1/0; desempate puntos → DG → GF → **enfrentamiento
+  directo** → nombre. Se recalcula desde los partidos jugados y se guarda ordenada.
+
+### Modelo de datos (se completan campos ya previstos en el doc del torneo)
+- `fixture`: `[{ fecha, partidos: [{ id, local, visitante, golesLocal,
+  golesVisitante, semilla }] }]`. Los partidos jugados guardan su marcador y
+  semilla (copia histórica congelada, permitida por las reglas duras).
+- `tabla`: filas ordenadas `{ uid, nombre, pj, g, e, p, gf, gc, dg, pts }`.
+- `fechaActual`, `totalFechas`, `estado` (`EN_CURSO`/`FINALIZADO`), `ultimoAvanceEn`.
+- **Decisión:** los resultados se embeben en `fixture` dentro del doc del torneo
+  (que el cliente ya escucha en vivo), en lugar de la subcolección
+  `torneos/{id}/partidos/` que sugería §41.4. Es más simple y sin listeners extra;
+  el volumen es chico (≤ 28 partidos). Si en el futuro se guardan relatos por
+  partido, conviene mover eso a la subcolección.
+
+### Archivos
+- Modificados: `functions/index.js` (+3 funciones y helpers: `xiCompleto`,
+  `equipoMotorDesdeDoc`, `generarFixture`, `semillaPartido`, `calcularTabla`,
+  `enfrentamientoDirecto`), `js/core/nube.js` (wrappers `iniciarTorneoNube`/
+  `avanzarFechaNube`/`guardarMentalidadTorneoNube`), `js/ui/torneos.js` (vista de
+  competencia: tabla, fixture, botón de jugar fecha, selector de mentalidad, y
+  botón de iniciar en el armado), `css/estilos.css` (estilos de tabla/fixture/
+  mentalidad).
+- **`firestore.rules` NO se tocó.**
+
+### Decisiones
+- **Simulación 100% en el servidor** (§41.4), a diferencia del partido vs IA (que
+  el cliente simula y el servidor re-verifica). Reusa `functions/juego/core/motor.js`.
+- **Semilla derivada del torneo** (no `Math.random`): cumple la regla dura del
+  motor y hace cada resultado reproducible/verificable.
+- **Sin cambios de balance ni de `config/`** → no hubo que re-sincronizar
+  `js/` ↔ `functions/juego/`. `PUNTOS_TABLA` (3/1/0) es puntaje deportivo, no
+  economía, y vive junto a la función de tabla.
+- **Iniciar requiere XI completo de todos.** Los forfeits/0-3 (§39) son 10B.
+
+### Cómo testear
+- **Headless (ya corrido):** determinismo del motor, fixture (cada par una sola
+  vez para N=4..8) y semillas — todo en verde
+  (`scratchpad/test-liga.mjs`, lógica copiada verbatim).
+- **Con deploy + varias cuentas:** `firebase deploy`; armar equipos completos;
+  el creador toca **Iniciar torneo** → aparece el fixture y la tabla; **Jugar
+  fecha** simula la fecha y actualiza la tabla; cambiar mentalidad antes de la
+  fecha; al terminar todas las fechas → `FINALIZADO` con el campeón.
+
+### Advertencias para la Etapa 10B (lo que sigue)
+- **Recompensas (§43)** al pasar a `FINALIZADO` (Fichas por puesto) — van en
+  `js/config/economia.js` (+copia en `functions/juego/config/`), otorgadas por CF.
+- **Sobre pre-partido (§15.2)** y **puntos por partido de torneo (§15.3)** con el
+  tope de amistosos (§15.3.2).
+- **Abandono (§39):** partidos restantes 0-3; jugadores no se liberan en curso.
+- **Amistosos entre usuarios (§32).**
+- El `avanzarFecha` de 10A ya deja el hook para otorgar recompensas al finalizar
+  (hoy solo marca `FINALIZADO`).
+- Recordar la **duplicación cliente/servidor** si 10B toca `config/` o el motor.

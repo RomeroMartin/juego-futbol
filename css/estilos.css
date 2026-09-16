@@ -3066,3 +3066,97 @@ main {
 
 .torneo-pick-reserva { margin-top: 12px; }
 .torneo-pick-reserva .secondary-button { width: 100%; margin: 0; }
+
+
+/* ==========================================
+   TORNEOS — competencia: tabla y fixture (Etapa 10A)
+   ========================================== */
+
+.torneo-tabla-wrap { overflow-x: auto; margin-top: 6px; }
+
+.torneo-tabla {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    min-width: 420px;
+}
+
+.torneo-tabla th,
+.torneo-tabla td {
+    padding: 7px 6px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+}
+
+.torneo-tabla th { color: var(--muted); font-weight: bold; font-size: 11px; }
+.torneo-tabla td.nom { text-align: left; }
+.torneo-tabla td.pts { font-weight: bold; color: var(--green); }
+.torneo-tabla tr.yo td { background: rgba(36, 208, 111, 0.10); }
+
+/* Fixture */
+.torneo-fecha {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: var(--surface-light);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+
+.torneo-fecha.actual { border-color: var(--green); }
+.torneo-fecha h4 { font-size: 13px; margin-bottom: 8px; color: var(--muted); }
+
+.torneo-partido {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+    font-size: 13px;
+}
+
+.torneo-partido .pl { text-align: right; }
+.torneo-partido .pv { text-align: left; }
+.torneo-partido .mk {
+    min-width: 48px;
+    text-align: center;
+    color: var(--muted);
+    font-weight: bold;
+}
+.torneo-partido .mk.jug { color: var(--white); }
+.torneo-partido.mio { background: rgba(36, 208, 111, 0.08); border-radius: 6px; }
+
+/* Selector de mentalidad de la fecha */
+.torneo-ment {
+    margin: 18px 0;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+
+.torneo-ment-selects {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 8px 0 12px;
+}
+
+.torneo-ment-selects label {
+    flex: 1 1 160px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.torneo-ment-selects select {
+    padding: 8px 10px;
+    background: var(--surface-light);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--white);
+    font: inherit;
+}
+
+.torneo-ment .secondary-button { width: 100%; margin: 0; }

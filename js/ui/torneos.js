@@ -15,6 +15,14 @@ import {
     slotsDeFormacion
 } from "../config/formaciones.js";
 import {
+    MENTALIDADES_OF,
+    MENTALIDADES_DEF,
+    CLAVES_OFENSIVA,
+    CLAVES_DEFENSIVA,
+    MENTALIDAD_OF_DEFAULT,
+    MENTALIDAD_DEF_DEFAULT
+} from "../config/mentalidades.js";
+import {
     escucharMisTorneos,
     escucharEquipoTorneo,
     crearTorneoNube,
@@ -23,7 +31,10 @@ import {
     elegirFormacionTorneoNube,
     reclamarJugadorNube,
     liberarJugadorNube,
-    listarPoolReservaNube
+    listarPoolReservaNube,
+    iniciarTorneoNube,
+    avanzarFechaNube,
+    guardarMentalidadTorneoNube
 } from "../core/nube.js";
 
 
@@ -176,6 +187,13 @@ function pintarDetalle(c) {
         return;
     }
 
+    // Etapa 10A: en curso / finalizado se juega y se ve la liga.
+    if (t.estado === "EN_CURSO" || t.estado === "FINALIZADO") {
+        asegurarSubEquipo(t.id, uid);
+        pintarCompeticion(c, t, uid);
+        return;
+    }
+
     detenerSubEquipo();
     pintarSala(c, t, uid);
 }
@@ -263,6 +281,15 @@ function pintarArmado(c, t, uid) {
     // Selector de jugador para un slot (solo con ventana abierta).
     const picker = (abierta && slotAbierto) ? pintarPicker(t, uid, posDeSlot[slotAbierto]) : "";
 
+    // Botón de iniciar el torneo (solo el creador). Al iniciar se cierra el
+    // armado, se genera el fixture y se juega la primera fecha (§40, §41).
+    const esCreador = t.creadorId === uid;
+    const iniciar = esCreador
+        ? `<button id="torneoIniciar" class="main-button">INICIAR TORNEO (jugar la liga)</button>
+           <p class="torneo-nota">Al iniciar se cierra el armado y se genera el fixture. Todos los
+           participantes tienen que tener su equipo completo.</p>`
+        : "";
+
     c.innerHTML = `
         <button class="back-button" id="torneoVolverLista">← Mis torneos</button>
 
@@ -276,11 +303,15 @@ function pintarArmado(c, t, uid) {
             <h3>Tu equipo del torneo (${formacion})</h3>
             ${cancha}
             ${picker}
+            ${iniciar}
         </div>
     `;
 
     document.getElementById("torneoVolverLista").addEventListener("click", volverALista);
     enganchesArmado(t, uid, abierta);
+
+    const btnIniciar = document.getElementById("torneoIniciar");
+    if (btnIniciar) btnIniciar.addEventListener("click", () => onIniciarTorneo(t, abierta));
 }
 
 
@@ -418,6 +449,139 @@ function pintarPicker(t, uid, posicion) {
             <div class="torneo-pick-lista">${itemsPropios}</div>
             <div class="torneo-pick-reserva">${reservaBloque}</div>
         </div>`;
+}
+
+
+// ==========================================
+// COMPETENCIA: jugar la liga (Etapa 10A)
+// ==========================================
+
+function pintarCompeticion(c, t, uid) {
+    const esCreador = t.creadorId === uid;
+    const finalizado = t.estado === "FINALIZADO";
+    const soyParticipante = t.participantes.includes(uid);
+    const totalFechas = t.totalFechas || (t.fixture?.length || "");
+
+    // Campeón, si el torneo terminó (premios en Fichas: Etapa 10B).
+    const cabecera = (finalizado && t.tabla?.length)
+        ? `<div class="torneo-aviso torneo-aviso-ok">
+               🏆 <strong>Campeón: ${escapar(t.tabla[0].nombre)}.</strong> Torneo finalizado.
+               <em>Los premios en Fichas llegan en la próxima actualización.</em>
+           </div>`
+        : "";
+
+    // Cambiar mi mentalidad para la próxima fecha (solo en curso).
+    const bloqueMent = (!finalizado && soyParticipante && equipoTorneo)
+        ? pintarSelectorMentalidad()
+        : "";
+
+    // Botón de jugar la fecha.
+    let bloqueAvance = "";
+    if (!finalizado) {
+        if (esCreador || puedeForzar(t)) {
+            bloqueAvance = `<button id="torneoAvanzar" class="main-button">JUGAR FECHA ${t.fechaActual}</button>`;
+        } else {
+            bloqueAvance = `<p class="torneo-nota">Esperando a que el creador juegue la fecha
+                ${t.fechaActual}. Tras 5 días sin avanzar, cualquiera puede forzarla.</p>`;
+        }
+    }
+
+    c.innerHTML = `
+        <button class="back-button" id="torneoVolverLista">← Mis torneos</button>
+        <div class="torneo-detalle">
+            <span class="eyebrow">${ESTADO_ETIQUETA[t.estado]}${finalizado ? "" : ` · Fecha ${t.fechaActual}/${totalFechas}`}</span>
+            <h2>${escapar(t.nombre)}</h2>
+            ${cabecera}
+
+            <h3>Tabla de posiciones</h3>
+            ${pintarTabla(t, uid)}
+
+            ${bloqueMent}
+            ${bloqueAvance}
+
+            <h3>Fixture</h3>
+            ${pintarFixture(t, uid)}
+        </div>`;
+
+    document.getElementById("torneoVolverLista").addEventListener("click", volverALista);
+    const btnAv = document.getElementById("torneoAvanzar");
+    if (btnAv) btnAv.addEventListener("click", () => onAvanzarFecha(t.id));
+    const btnMent = document.getElementById("torneoGuardarMent");
+    if (btnMent) btnMent.addEventListener("click", () => onGuardarMentalidad(t.id));
+}
+
+
+function pintarTabla(t, uid) {
+    const filas = (t.tabla || []).map((r, i) => `
+        <tr class="${r.uid === uid ? "yo" : ""}">
+            <td>${i + 1}</td>
+            <td class="nom">${escapar(r.nombre)}</td>
+            <td>${r.pj}</td><td>${r.g}</td><td>${r.e}</td><td>${r.p}</td>
+            <td>${r.gf}</td><td>${r.gc}</td><td>${r.dg > 0 ? "+" : ""}${r.dg}</td>
+            <td class="pts">${r.pts}</td>
+        </tr>`).join("");
+    return `
+        <div class="torneo-tabla-wrap">
+            <table class="torneo-tabla">
+                <thead><tr>
+                    <th>#</th><th>Equipo</th><th>PJ</th><th>G</th><th>E</th><th>P</th>
+                    <th>GF</th><th>GC</th><th>DG</th><th>Pts</th>
+                </tr></thead>
+                <tbody>${filas}</tbody>
+            </table>
+        </div>`;
+}
+
+
+function pintarFixture(t, uid) {
+    const nombres = t.nombres || {};
+    return (t.fixture || []).map(f => {
+        const actual = f.fecha === (t.fechaActual || 1) && t.estado !== "FINALIZADO";
+        const partidos = f.partidos.map(pt => {
+            const jugado = pt.golesLocal != null;
+            const marcador = jugado ? `${pt.golesLocal} - ${pt.golesVisitante}` : "vs";
+            const mio = (pt.local === uid || pt.visitante === uid) ? " mio" : "";
+            return `
+                <div class="torneo-partido${mio}">
+                    <span class="pl">${escapar(nombres[pt.local] || "Jugador")}</span>
+                    <span class="mk ${jugado ? "jug" : ""}">${marcador}</span>
+                    <span class="pv">${escapar(nombres[pt.visitante] || "Jugador")}</span>
+                </div>`;
+        }).join("");
+        return `
+            <div class="torneo-fecha ${actual ? "actual" : ""}">
+                <h4>Fecha ${f.fecha}${actual ? " · próxima" : ""}</h4>
+                ${partidos}
+            </div>`;
+    }).join("");
+}
+
+
+function pintarSelectorMentalidad() {
+    const of = equipoTorneo.mentalidadOfensiva || MENTALIDAD_OF_DEFAULT;
+    const def = equipoTorneo.mentalidadDefensiva || MENTALIDAD_DEF_DEFAULT;
+    const opsOf = CLAVES_OFENSIVA
+        .map(k => `<option value="${k}" ${k === of ? "selected" : ""}>${MENTALIDADES_OF[k].etiqueta}</option>`).join("");
+    const opsDef = CLAVES_DEFENSIVA
+        .map(k => `<option value="${k}" ${k === def ? "selected" : ""}>${MENTALIDADES_DEF[k].etiqueta}</option>`).join("");
+    return `
+        <div class="torneo-ment">
+            <h3>Tu mentalidad para la próxima fecha</h3>
+            <p class="torneo-nota">La formación y el XI están congelados; solo la mentalidad es editable (§17.3).</p>
+            <div class="torneo-ment-selects">
+                <label>Ofensiva<select id="mentOf">${opsOf}</select></label>
+                <label>Defensiva<select id="mentDef">${opsDef}</select></label>
+            </div>
+            <button id="torneoGuardarMent" class="secondary-button">Guardar mentalidad</button>
+        </div>`;
+}
+
+
+// ¿Cualquiera puede forzar la fecha? (5 días sin avance, §41.2).
+function puedeForzar(t) {
+    if (!t.ultimoAvanceEn) return false;
+    const dias = (Date.now() - new Date(t.ultimoAvanceEn).getTime()) / 86400000;
+    return dias >= (t.forzadoPorInactividadDias || 5);
 }
 
 
@@ -590,6 +754,59 @@ async function onVerReserva(torneoId) {
     } finally {
         cargandoReserva = false;
         pintar();
+    }
+}
+
+
+// --- Competencia (Etapa 10A) ---
+
+async function onIniciarTorneo(t, abierta) {
+    if (ocupado) return;
+    const msg = abierta
+        ? "Iniciar cierra el armado ahora (aunque la ventana de 24 hs no haya vencido) y genera el fixture. ¿Seguís?"
+        : "Se va a generar el fixture y arrancar la liga. ¿Seguís?";
+    if (!confirm(msg)) return;
+    ocupado = true;
+    try {
+        const r = await iniciarTorneoNube(t.id);
+        if (r && r.ok === false) {
+            alert("Todavía no se puede iniciar. Estos participantes no completaron su equipo:\n\n"
+                + (r.incompletos || []).join(", "));
+        }
+        // El paso a EN_CURSO llega por el listener.
+    } catch (e) {
+        alert(e?.message || "No se pudo iniciar el torneo.");
+    } finally {
+        ocupado = false;
+    }
+}
+
+async function onAvanzarFecha(torneoId) {
+    if (ocupado) return;
+    ocupado = true;
+    try {
+        await avanzarFechaNube(torneoId);
+        // Resultados y tabla llegan por el listener.
+    } catch (e) {
+        alert(e?.message || "No se pudo jugar la fecha.");
+    } finally {
+        ocupado = false;
+    }
+}
+
+async function onGuardarMentalidad(torneoId) {
+    if (ocupado) return;
+    const of = document.getElementById("mentOf")?.value;
+    const def = document.getElementById("mentDef")?.value;
+    if (!of || !def) return;
+    ocupado = true;
+    try {
+        await guardarMentalidadTorneoNube(torneoId, of, def);
+        alert("Mentalidad guardada para la próxima fecha.");
+    } catch (e) {
+        alert(e?.message || "No se pudo guardar la mentalidad.");
+    } finally {
+        ocupado = false;
     }
 }
 
