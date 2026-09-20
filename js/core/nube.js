@@ -272,3 +272,10 @@ export async function guardarMentalidadTorneoNube(torneoId, mentalidadOfensiva, 
     const res = await llamar("guardarMentalidadTorneo")({ torneoId, mentalidadOfensiva, mentalidadDefensiva });
     return res.data;
 }
+
+
+// Cambia el nombre visible del usuario (perfil + torneos donde participa).
+export async function cambiarNombreNube(nombre) {
+    const res = await llamar("cambiarNombre")({ nombre });
+    return res.data;
+}

@@ -27,7 +27,7 @@ export const ECONOMIA = {
     topeAmistososConPuntosPorDia: 3,   // los torneos no necesitan tope
     packRecompensa: { cantidad: 3, tipo: "PREMIUM" },
     fichas: { porPartido: 10, porVictoria: 25, porEmpate: 10, primeroDelDia: 50 },
-    precios: { BASICO: 300, PREMIUM: 1200, POSICIONAL: 500 },
+    precios: { BASICO: 1000, PREMIUM: 3500, POSICIONAL: 1500 },
 
     // ------------------------------------------
     // Paquetes: tamaño y tipos (§14, §15.5)

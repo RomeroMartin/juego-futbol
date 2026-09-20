@@ -50,6 +50,12 @@ export async function registrarConEmail(email, password, nombre) {
     return cred;
 }
 
+// Actualiza el nombre visible (displayName) de la sesión actual, para que los
+// torneos nuevos y el header lo muestren en lugar del mail.
+export async function actualizarNombreVisible(nombre) {
+    if (auth.currentUser) await updateProfile(auth.currentUser, { displayName: nombre });
+}
+
 // Ingreso con email + contraseña.
 export async function entrarConEmail(email, password) {
     return signInWithEmailAndPassword(auth, email, password);

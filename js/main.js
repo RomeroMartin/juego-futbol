@@ -10,7 +10,8 @@
 // detrás del overlay hasta que haya sesión.
 
 import { hidratarDesdeNube, limpiarEstado } from "./core/estado.js";
-import { observarSesion, salir } from "./core/auth.js";
+import { observarSesion, salir, actualizarNombreVisible } from "./core/auth.js";
+import { cambiarNombreNube } from "./core/nube.js";
 import {
     initLogin,
     mostrarLogin,
@@ -68,6 +69,26 @@ document.getElementById("backFromTeam")
 // Cerrar sesión: observarSesion() reaccionará mostrando el login.
 document.getElementById("logoutButton")
     .addEventListener("click", () => salir());
+
+// Cambiar el nombre visible (perfil + torneos donde participo).
+document.getElementById("editNameBtn")
+    .addEventListener("click", onCambiarNombre);
+
+async function onCambiarNombre() {
+    const actual = document.getElementById("userName").textContent || "";
+    const ingresado = prompt("¿Cómo querés que te vean tus amigos?", actual);
+    if (ingresado === null) return;
+    const nombre = ingresado.trim();
+    if (!nombre) { alert("El nombre no puede estar vacío."); return; }
+    try {
+        await actualizarNombreVisible(nombre);   // displayName de Auth (torneos nuevos)
+        await cambiarNombreNube(nombre);          // perfil + torneos existentes
+        document.getElementById("userName").textContent = nombre;
+        alert("Listo, tu nombre quedó como: " + nombre);
+    } catch (e) {
+        alert(e?.message || "No se pudo cambiar el nombre.");
+    }
+}
 
 // Aviso de reset de colección (Etapa 1), ahora solo relevante tras una
 // migración local en la que el dataset había cambiado.

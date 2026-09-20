@@ -1049,3 +1049,38 @@ export const guardarMentalidadTorneo = onCall(async (request) => {
         return { ok: true };
     });
 });
+
+
+// ==========================================
+// PERFIL — cambiar el nombre visible
+// ==========================================
+//
+// El cliente no puede escribir su doc de usuario (reglas), así que el cambio de
+// nombre pasa por acá. Además propaga el nombre nuevo a los torneos donde
+// participa (el nombre visible se guarda como copia en cada torneo, §35).
+
+export const cambiarNombre = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const nombre = (request.data?.nombre || "").trim().slice(0, 30);
+    if (!nombre) throw new HttpsError("invalid-argument", "El nombre no puede estar vacío.");
+
+    // Doc de usuario.
+    await db.doc(`users/${uid}`).set({ nombre, actualizadoEn: ahoraISO() }, { merge: true });
+
+    // Propagar a los torneos donde participa (nombres[uid] y filas de la tabla).
+    const snap = await db.collection("torneos").where("participantes", "array-contains", uid).get();
+    if (!snap.empty) {
+        const batch = db.batch();
+        for (const d of snap.docs) {
+            const t = d.data();
+            const upd = { [`nombres.${uid}`]: nombre };
+            if (Array.isArray(t.tabla)) {
+                upd.tabla = t.tabla.map(r => (r.uid === uid ? { ...r, nombre } : r));
+            }
+            batch.update(d.ref, upd);
+        }
+        await batch.commit();
+    }
+
+    return { ok: true, nombre };
+});

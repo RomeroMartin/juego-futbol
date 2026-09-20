@@ -223,8 +223,11 @@ async function comenzarPartido() {
 // PANTALLA: RELATO PROGRESIVO
 // ==========================================
 
-const RETARDO_LINEA = 900;   // ms entre líneas
-const RETARDO_GOL = 1500;    // los goles respiran un poco más
+// El relato dura ~1 minuto: repartimos ese tiempo entre las líneas, con un piso
+// y un techo por línea para que quede legible sin importar cuántos eventos haya.
+const RELATO_DURACION_OBJETIVO = 60000;   // ~1 min en total
+const RETARDO_MIN = 1200;                 // ms mínimos por línea
+const RETARDO_MAX = 3200;                 // ms máximos por línea
 
 function reproducirRelato(lineas) {
     detenerRelato();
@@ -234,6 +237,11 @@ function reproducirRelato(lineas) {
     cont.innerHTML = "";
     boton.textContent = "SALTEAR ▶";
 
+    // Ritmo adaptativo: apunta a ~1 min de duración total.
+    const base = Math.min(RETARDO_MAX, Math.max(RETARDO_MIN,
+        Math.round(RELATO_DURACION_OBJETIVO / Math.max(1, lineas.length))));
+    const retardoGol = Math.round(base * 1.6);   // los goles respiran un poco más
+
     let i = 0;
     const paso = () => {
         if (i >= lineas.length) {
@@ -242,14 +250,16 @@ function reproducirRelato(lineas) {
             return;
         }
         const l = lineas[i++];
-        const clase = l.esGol ? "relato-linea relato-gol"
+        // Gol a favor (USUARIO) en verde; gol en contra en rojo.
+        const claseGol = l.equipoId === "USUARIO" ? "relato-gol" : "relato-gol-contra";
+        const clase = l.esGol ? `relato-linea ${claseGol}`
             : (l.tipo === "INICIO" || l.tipo === "FINAL") ? "relato-linea relato-marco"
             : "relato-linea";
         const minuto = (l.tipo === "INICIO") ? "" : `${l.minuto}'`;
         cont.insertAdjacentHTML("beforeend",
             `<div class="${clase}"><span class="relato-min">${minuto}</span><span class="relato-texto">${l.texto}</span></div>`);
         cont.scrollTop = cont.scrollHeight;
-        relatoTimer = setTimeout(paso, l.esGol ? RETARDO_GOL : RETARDO_LINEA);
+        relatoTimer = setTimeout(paso, l.esGol ? retardoGol : base);
     };
     paso();
 }

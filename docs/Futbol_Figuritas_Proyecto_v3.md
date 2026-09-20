@@ -512,9 +512,12 @@ Las Fichas son la **moneda ganable** y el camino alternativo de progresión, esp
 
 | Paquete | Costo | Contenido |
 |---|---|---|
-| Paquete Básico | 300 Fichas | 6 jugadores, probabilidades estándar |
-| Paquete Premium | 1200 Fichas | 6 jugadores, mínimo 1 DESTACADO garantizado |
-| Paquete Posicional | 500 Fichas | 6 jugadores de una posición a elegir |
+| Paquete Básico | 1000 Fichas | 6 jugadores, probabilidades estándar |
+| Paquete Premium | 3500 Fichas | 6 jugadores, mínimo 1 DESTACADO garantizado |
+| Paquete Posicional | 1500 Fichas | 6 jugadores de una posición a elegir |
+
+> Ajuste post-lanzamiento (2026-09): los precios subieron de 300/1200/500 a
+> 1000/3500/1500 porque el farmeo vs IA abría paquetes demasiado rápido.
 
 ### 15.6. Ritmo resultante
 
@@ -551,7 +554,7 @@ export const ECONOMIA = {
   topeAmistososConPuntosPorDia: 3,   // los torneos no necesitan tope
   packRecompensa: { cantidad: 3, tipo: "PREMIUM" },
   fichas: { porPartido: 10, porVictoria: 25, porEmpate: 10, primeroDelDia: 50 },
-  precios: { BASICO: 300, PREMIUM: 1200, POSICIONAL: 500 }
+  precios: { BASICO: 1000, PREMIUM: 3500, POSICIONAL: 1500 }
 };
 ```
 
