@@ -351,3 +351,48 @@ Modificados:
 - El `avanzarFecha` de 10A ya deja el hook para otorgar recompensas al finalizar
   (hoy solo marca `FINALIZADO`).
 - Recordar la **duplicación cliente/servidor** si 10B toca `config/` o el motor.
+
+---
+
+## 10. Post-testeo con amigos + Etapa 10B (parcial)
+
+Devolución del grupo tras jugar un torneo completo. Se hizo:
+
+### Ajustes rápidos
+- **Precios de paquetes** 300/1200/500 → **1000/3500/1500** (config cliente +
+  servidor + doc §15.5/§15.7). El farmeo vs IA abría paquetes muy barato.
+- **Relato**: dura ~1 min (ritmo adaptativo a la cantidad de líneas) y los **goles
+  en contra van en rojo** (`relato-gol-contra`), a favor en verde. (`js/ui/partido.js`,
+  css).
+- **Cambiar nombre** desde el header (✏️): Cloud Function `cambiarNombre` (perfil +
+  `nombres[uid]` y filas de tabla en cada torneo) + `actualizarNombreVisible`
+  (displayName de Auth, para torneos nuevos). Antes en los torneos figuraba el mail.
+
+### Etapa 10B — hecho
+- **Premios del torneo (§43)**: al pasar a `FINALIZADO`, `avanzarFecha` acredita
+  Fichas por puesto (1º: 500+100·N, 2º: 250+50·N, 3º: 150, 4º+: 100). Config en
+  `ECONOMIA.premiosTorneo` (cliente+servidor). Flag `premiosOtorgados` para no
+  duplicar. La UI muestra el puesto y las Fichas ganadas.
+- **Sobre gratis por partido (§15.2)**: `avanzarFecha` da **+1 BÁSICO** a cada uno
+  que jugó la fecha, si el torneo tiene ≥4 participantes
+  (`ECONOMIA.sobrePorPartidoTorneo`/`minParticipantesParaSobre`). Todo en la misma
+  transacción (lecturas de user docs antes de escribir).
+
+### Etapa 10B — PENDIENTE (piezas grandes, para una ronda enfocada)
+- **A3 — Relatos en partidos de torneo/amistosos.** Requiere: re-simular el partido
+  en el cliente con la semilla guardada + leer ambos equipos; y **refactorizar la
+  pantalla de relato** (`js/ui/partido.js`), hoy acoplada al flujo vs IA (su botón
+  final va a "ver resultado" de ese modo). Generalizar `generarRelato` para aceptar
+  nombres de equipo (hoy hardcodea "Tu equipo"). `registro.eventos` NO se guarda en
+  el torneo (solo semilla+marcador) → se recalcula.
+- **§32 — Amistosos entre usuarios.** Es una feature completa: abrir reglas de
+  `matches/` (hoy `if false`), Cloud Functions (desafiar / aceptar+confirmar XI /
+  simular server-side), y pantallas nuevas (desafío por código o amigo, bandeja de
+  invitaciones, confirmar XI). Da Fichas y puntos (§15.3) con tope diario de 3
+  (§15.3.2). Los amistosos NO dan sobre (§15.2).
+- **Abandono 0-3 (§39)** y el tope de amistosos con puntos (§15.3.2) van junto con §32.
+
+### Nota de UX conocida
+- El header (Fichas / paquetes) no se refresca en vivo tras ganar premios o recibir
+  el sobre: hay que recargar. Se avisa en pantalla. Mejorable con una re-hidratación
+  puntual del doc de usuario.

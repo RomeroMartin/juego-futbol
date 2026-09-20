@@ -29,6 +29,14 @@ export const ECONOMIA = {
     fichas: { porPartido: 10, porVictoria: 25, porEmpate: 10, primeroDelDia: 50 },
     precios: { BASICO: 1000, PREMIUM: 3500, POSICIONAL: 1500 },
 
+    // Premios del torneo al finalizar (§43). N = cantidad de participantes.
+    premiosTorneo: {
+        campeonBase: 500, campeonPorParticipante: 100,   // 1º: 500 + 100·N
+        subcampeonBase: 250, subcampeonPorParticipante: 50, // 2º: 250 + 50·N
+        tercero: 150,                                     // 3º: 150
+        participar: 100                                   // 4º+: 100 por completar
+    },
+
     // ------------------------------------------
     // Paquetes: tamaño y tipos (§14, §15.5)
     // ------------------------------------------

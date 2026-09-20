@@ -22,6 +22,7 @@ import {
     CLAVES_OFENSIVA, CLAVES_DEFENSIVA
 } from "./juego/config/mentalidades.js";
 import { simularPartido } from "./juego/core/motor.js";
+import { ECONOMIA } from "./juego/config/economia.js";
 import {
     abrirPaquete as ecoAbrirPaquete,
     comprarPaquete as ecoComprarPaquete,
@@ -910,6 +911,23 @@ function calcularTabla(participantes, nombres, fixture) {
 }
 
 
+// Premios del torneo por puesto (§43). Devuelve { uid: fichas }. N = participantes.
+function premiosPorTabla(tabla, n) {
+    const cfg = ECONOMIA.premiosTorneo;
+    const out = {};
+    tabla.forEach((row, i) => {
+        const puesto = i + 1;
+        let fichas;
+        if (puesto === 1) fichas = cfg.campeonBase + cfg.campeonPorParticipante * n;
+        else if (puesto === 2) fichas = cfg.subcampeonBase + cfg.subcampeonPorParticipante * n;
+        else if (puesto === 3) fichas = cfg.tercero;
+        else fichas = cfg.participar;
+        out[row.uid] = fichas;
+    });
+    return out;
+}
+
+
 // Iniciar el torneo: cierra el armado, genera el fixture de liga y pasa a
 // EN_CURSO. Solo el creador. Si a alguien le falta completar su XI, devuelve
 // { ok:false, incompletos } sin iniciar.
@@ -1007,15 +1025,48 @@ export const avanzarFecha = onCall(async (request) => {
         const siguiente = fecha + 1;
         const finalizado = siguiente > fixture.length;
 
+        // Acreditaciones de la fecha (todas las lecturas ANTES de escribir):
+        //  - Sobre gratis por cada partido de torneo (§15.2): +1 BÁSICO a cada uno
+        //    que jugó esta fecha, si el torneo tiene el mínimo de participantes.
+        //  - Premios al finalizar (§43): Fichas por puesto.
+        const darSobre = ECONOMIA.sobrePorPartidoTorneo
+            && torneo.participantes.length >= (ECONOMIA.minParticipantesParaSobre || 4);
+        const premios = (finalizado && !torneo.premiosOtorgados)
+            ? premiosPorTabla(tabla, torneo.participantes.length)
+            : null;
+
+        // Usuarios cuyo doc hay que tocar: los que jugaron (sobre) ∪ todos (premios).
+        const aTocar = new Set();
+        if (darSobre) for (const p of uids) aTocar.add(p);
+        if (premios) for (const p of torneo.participantes) aTocar.add(p);
+
+        const snaps = {};
+        for (const p of aTocar) snaps[p] = await t.get(db.doc(`users/${p}`));
+        for (const p of aTocar) {
+            const snap = snaps[p];
+            if (!snap.exists) continue;
+            const data = snap.data();
+            const usuario = reconstruirUsuario(data);
+            const paquetes = { ...inventarioNuevo(), ...(data.paquetes || {}) };
+            if (darSobre && uids.has(p)) paquetes.BASICO = (paquetes.BASICO || 0) + 1;
+            if (premios) usuario.monedas.fichas = (usuario.monedas.fichas || 0) + (premios[p] || 0);
+            t.set(db.doc(`users/${p}`), {
+                usuario: extraerUsuario(usuario),
+                paquetes,
+                actualizadoEn: ahoraISO()
+            }, { merge: true });
+        }
+
         t.update(ref, {
             fixture,
             tabla,
             fechaActual: finalizado ? fixture.length : siguiente,
             estado: finalizado ? "FINALIZADO" : "EN_CURSO",
+            premiosOtorgados: finalizado ? true : (torneo.premiosOtorgados || false),
             ultimoAvanceEn: ahoraISO()
         });
 
-        return { ok: true, fechaJugada: fecha, finalizado };
+        return { ok: true, fechaJugada: fecha, finalizado, premios };
     });
 });
 

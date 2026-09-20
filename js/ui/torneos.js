@@ -22,6 +22,7 @@ import {
     MENTALIDAD_OF_DEFAULT,
     MENTALIDAD_DEF_DEFAULT
 } from "../config/mentalidades.js";
+import { ECONOMIA } from "../config/economia.js";
 import {
     escucharMisTorneos,
     escucharEquipoTorneo,
@@ -487,13 +488,18 @@ function pintarCompeticion(c, t, uid) {
     const soyParticipante = t.participantes.includes(uid);
     const totalFechas = t.totalFechas || (t.fixture?.length || "");
 
-    // Campeón, si el torneo terminó (premios en Fichas: Etapa 10B).
-    const cabecera = (finalizado && t.tabla?.length)
-        ? `<div class="torneo-aviso torneo-aviso-ok">
-               🏆 <strong>Campeón: ${escapar(t.tabla[0].nombre)}.</strong> Torneo finalizado.
-               <em>Los premios en Fichas llegan en la próxima actualización.</em>
-           </div>`
-        : "";
+    // Campeón + premio propio, si el torneo terminó (§43).
+    let cabecera = "";
+    if (finalizado && t.tabla?.length) {
+        const miPuesto = t.tabla.findIndex(r => r.uid === uid) + 1;   // 0 si no estoy
+        const miPremio = miPuesto ? premioDePuesto(miPuesto, t.participantes.length) : 0;
+        const linePremio = miPuesto
+            ? `<br>Saliste <strong>${miPuesto}º</strong> y ganaste <strong>${miPremio} 🪙 Fichas</strong>. <em>(recargá para ver tu saldo actualizado)</em>`
+            : "";
+        cabecera = `<div class="torneo-aviso torneo-aviso-ok">
+               🏆 <strong>Campeón: ${escapar(t.tabla[0].nombre)}.</strong> Torneo finalizado.${linePremio}
+           </div>`;
+    }
 
     // Cambiar mi mentalidad para la próxima fecha (solo en curso).
     const bloqueMent = (!finalizado && soyParticipante && equipoTorneo)
@@ -524,6 +530,7 @@ function pintarCompeticion(c, t, uid) {
 
             ${bloqueMent}
             ${bloqueAvance}
+            ${!finalizado ? `<p class="torneo-nota">🎁 Cada fecha que jugás te da 1 sobre gratis (aparece en tus paquetes; recargá para verlo).</p>` : ""}
 
             <h3>Fixture</h3>
             ${pintarFixture(t, uid)}
@@ -602,6 +609,15 @@ function pintarSelectorMentalidad() {
         </div>`;
 }
 
+
+// Premio en Fichas según el puesto final (§43). Debe coincidir con el servidor.
+function premioDePuesto(puesto, n) {
+    const cfg = ECONOMIA.premiosTorneo;
+    if (puesto === 1) return cfg.campeonBase + cfg.campeonPorParticipante * n;
+    if (puesto === 2) return cfg.subcampeonBase + cfg.subcampeonPorParticipante * n;
+    if (puesto === 3) return cfg.tercero;
+    return cfg.participar;
+}
 
 // ¿Cualquiera puede forzar la fecha? (5 días sin avance, §41.2).
 function puedeForzar(t) {
