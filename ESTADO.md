@@ -378,13 +378,22 @@ Devolución del grupo tras jugar un torneo completo. Se hizo:
   (`ECONOMIA.sobrePorPartidoTorneo`/`minParticipantesParaSobre`). Todo en la misma
   transacción (lecturas de user docs antes de escribir).
 
-### Etapa 10B — PENDIENTE (piezas grandes, para una ronda enfocada)
-- **A3 — Relatos en partidos de torneo/amistosos.** Requiere: re-simular el partido
-  en el cliente con la semilla guardada + leer ambos equipos; y **refactorizar la
-  pantalla de relato** (`js/ui/partido.js`), hoy acoplada al flujo vs IA (su botón
-  final va a "ver resultado" de ese modo). Generalizar `generarRelato` para aceptar
-  nombres de equipo (hoy hardcodea "Tu equipo"). `registro.eventos` NO se guarda en
-  el torneo (solo semilla+marcador) → se recalcula.
+### Etapa 10B — A3 hecho (relatos en partidos de torneo)
+- **Botón "📖 Ver relato"** en cada partido jugado del fixture. Re-simula el partido
+  en el cliente con la **semilla guardada** (mismo marcador) leyendo ambos equipos
+  (`obtenerEquipoTorneo` en `nube.js`), y reusa la pantalla de relato.
+- `generarRelato` ahora acepta `registro.nombreUsuario` (antes hardcodeaba "Tu
+  equipo"), así el relato de torneo usa los nombres reales.
+- `partido.js`: `reproducirRelatoExterno(registro, onVolver)` + `terminarRelato`
+  vuelve a `onVolver` en vez de ir al resultado vs IA (se limpia `volverExterno` en
+  el flujo vs IA para no arrastrar callbacks).
+- **Clave de determinismo:** el motor NO es simétrico, así que el cliente simula
+  siempre en el orden **local→visitante** (como el servidor) y solo cambia qué lado
+  lleva la etiqueta `"USUARIO"` (para el color de goles a favor/en contra). Verificado
+  headless: el marcador re-simulado coincide desde ambas perspectivas.
+- Falta (menor): que el amistoso (§32) reuse el mismo `reproducirRelatoExterno`.
+
+### Etapa 10B — PENDIENTE
 - **§32 — Amistosos entre usuarios.** Es una feature completa: abrir reglas de
   `matches/` (hoy `if false`), Cloud Functions (desafiar / aceptar+confirmar XI /
   simular server-side), y pantallas nuevas (desafío por código o amigo, bandeja de

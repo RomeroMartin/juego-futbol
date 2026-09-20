@@ -23,9 +23,13 @@ import {
     MENTALIDAD_DEF_DEFAULT
 } from "../config/mentalidades.js";
 import { ECONOMIA } from "../config/economia.js";
+import { simularPartido } from "../core/motor.js";
+import { reproducirRelatoExterno } from "./partido.js";
+import { showScreen } from "./navegacion.js";
 import {
     escucharMisTorneos,
     escucharEquipoTorneo,
+    obtenerEquipoTorneo,
     crearTorneoNube,
     unirseTorneoNube,
     abrirArmadoNube,
@@ -541,6 +545,9 @@ function pintarCompeticion(c, t, uid) {
     if (btnAv) btnAv.addEventListener("click", () => onAvanzarFecha(t.id));
     const btnMent = document.getElementById("torneoGuardarMent");
     if (btnMent) btnMent.addEventListener("click", () => onGuardarMentalidad(t.id));
+    cont().querySelectorAll("[data-relato]").forEach(b =>
+        b.addEventListener("click", () => onVerRelato(t, b.dataset.relato))
+    );
 }
 
 
@@ -575,10 +582,13 @@ function pintarFixture(t, uid) {
             const marcador = jugado ? `${pt.golesLocal} - ${pt.golesVisitante}` : "vs";
             const mio = (pt.local === uid || pt.visitante === uid) ? " mio" : "";
             return `
-                <div class="torneo-partido${mio}">
-                    <span class="pl">${escapar(nombres[pt.local] || "Jugador")}</span>
-                    <span class="mk ${jugado ? "jug" : ""}">${marcador}</span>
-                    <span class="pv">${escapar(nombres[pt.visitante] || "Jugador")}</span>
+                <div class="torneo-partido-wrap">
+                    <div class="torneo-partido${mio}">
+                        <span class="pl">${escapar(nombres[pt.local] || "Jugador")}</span>
+                        <span class="mk ${jugado ? "jug" : ""}">${marcador}</span>
+                        <span class="pv">${escapar(nombres[pt.visitante] || "Jugador")}</span>
+                    </div>
+                    ${jugado ? `<button class="torneo-relato-btn" data-relato="${pt.id}">📖 Ver relato</button>` : ""}
                 </div>`;
         }).join("");
         return `
@@ -609,6 +619,92 @@ function pintarSelectorMentalidad() {
         </div>`;
 }
 
+
+// Busca un partido del fixture por su id.
+function partidoPorId(t, id) {
+    for (const f of (t.fixture || [])) {
+        for (const pt of f.partidos) if (pt.id === id) return pt;
+    }
+    return null;
+}
+
+// Arma, desde el doc del equipo del torneo, el equipo que consume el motor
+// (objetos completos, con `id` para etiquetar los eventos) y los ids para el
+// relato. Mismo criterio que el servidor (equipoMotorDesdeDoc).
+function equipoTorneoAMotor(equipoDoc, id) {
+    const posDeSlot = mapaSlotPosicion(equipoDoc.formacion);
+    const g = { POR: [], DEF: [], MED: [], DEL: [] };
+    for (const [slot, pid] of Object.entries(equipoDoc.xi || {})) {
+        if (pid == null) continue;
+        const pl = CATALOGO.get(pid);
+        if (pl && g[posDeSlot[slot]]) g[posDeSlot[slot]].push(pl);
+    }
+    const of = equipoDoc.mentalidadOfensiva || MENTALIDAD_OF_DEFAULT;
+    const def = equipoDoc.mentalidadDefensiva || MENTALIDAD_DEF_DEFAULT;
+    return {
+        motor: {
+            id,
+            arquero: g.POR[0], defensores: g.DEF, medios: g.MED, delanteros: g.DEL,
+            formacion: equipoDoc.formacion, mentalidadOfensiva: of, mentalidadDefensiva: def
+        },
+        ids: {
+            arquero: g.POR[0]?.id,
+            defensores: g.DEF.map(p => p.id),
+            medios: g.MED.map(p => p.id),
+            delanteros: g.DEL.map(p => p.id),
+            formacion: equipoDoc.formacion, mentalidadOfensiva: of, mentalidadDefensiva: def
+        }
+    };
+}
+
+// Ver el relato de un partido de torneo ya jugado (A3): re-simula con la semilla
+// guardada (mismo resultado) y reutiliza la pantalla de relato. Si el que mira
+// jugó ese partido, se lo pone como "usuario" para el color de goles a favor/contra.
+async function onVerRelato(t, partidoId) {
+    if (ocupado) return;
+    const pt = partidoPorId(t, partidoId);
+    if (!pt || pt.golesLocal == null) return;
+
+    ocupado = true;
+    mensajeArmado = { tipo: "info", texto: "Cargando el relato…" };
+    pintar();
+    try {
+        const uid = usuarioActual()?.uid;
+        const [eqL, eqV] = await Promise.all([
+            obtenerEquipoTorneo(t.id, pt.local),
+            obtenerEquipoTorneo(t.id, pt.visitante)
+        ]);
+        if (!eqL || !eqV) throw new Error("No se encontraron los equipos del partido.");
+
+        const viewerVis = pt.visitante === uid;   // ¿el que mira jugó de visitante?
+
+        // El motor SIEMPRE corre local(A) vs visitante(B) con la semilla, igual que
+        // el servidor (no es simétrico), así el marcador coincide. Solo cambia qué
+        // lado lleva la etiqueta "USUARIO" (para el color de goles a favor/contra).
+        const localM = equipoTorneoAMotor(eqL, viewerVis ? "RIVAL" : "USUARIO");
+        const visM   = equipoTorneoAMotor(eqV, viewerVis ? "USUARIO" : "RIVAL");
+        const r = simularPartido(localM.motor, visM.motor, pt.semilla);
+
+        const registro = {
+            equipoUsuarioIds: viewerVis ? visM.ids : localM.ids,
+            equipoRivalIds:   viewerVis ? localM.ids : visM.ids,
+            nombreUsuario: t.nombres?.[viewerVis ? pt.visitante : pt.local] || "Local",
+            rivalNombre:   t.nombres?.[viewerVis ? pt.local : pt.visitante] || "Visitante",
+            semilla: pt.semilla,
+            golesUsuario: viewerVis ? pt.golesVisitante : pt.golesLocal,
+            golesRival:   viewerVis ? pt.golesLocal : pt.golesVisitante,
+            eventos: r.eventos
+        };
+
+        mensajeArmado = null;
+        reproducirRelatoExterno(registro, () => { showScreen("torneosScreen"); pintar(); });
+    } catch (e) {
+        mensajeArmado = { tipo: "error", texto: e?.message || "No se pudo abrir el relato." };
+        pintar();
+    } finally {
+        ocupado = false;
+    }
+}
 
 // Premio en Fichas según el puesto final (§43). Debe coincidir con el servidor.
 function premioDePuesto(puesto, n) {

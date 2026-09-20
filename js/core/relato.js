@@ -30,7 +30,8 @@ function equipoDesdeIds(ids) {
 export function generarRelato(registro) {
     const usuario = equipoDesdeIds(registro.equipoUsuarioIds);
     const rival = equipoDesdeIds(registro.equipoRivalIds);
-    const nombreUsuario = "Tu equipo";
+    // "Tu equipo" en vs IA; en torneo/amistoso llega el nombre real del equipo.
+    const nombreUsuario = registro.nombreUsuario || "Tu equipo";
     const nombreRival = registro.rivalNombre;
 
     // Stream de PRNG propio del relato (separado del motor).

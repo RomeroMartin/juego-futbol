@@ -216,6 +216,12 @@ export async function abrirArmadoNube(torneoId) {
 // TORNEOS — armado del equipo (Etapa 9B, §36.1, §37.1, §38)
 // ==========================================
 
+// Lee (una vez) el equipo del torneo de un participante (para re-simular el relato).
+export async function obtenerEquipoTorneo(torneoId, uid) {
+    const snap = await getDoc(doc(db, "torneos", torneoId, "equipos", uid));
+    return snap.exists() ? snap.data() : null;
+}
+
 // Escucha en vivo MI equipo del torneo (torneos/{id}/equipos/{uid}). `cb(equipo|null)`.
 export function escucharEquipoTorneo(torneoId, uid, cb) {
     return onSnapshot(

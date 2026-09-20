@@ -3158,6 +3158,20 @@ main {
 .torneo-partido .mk.jug { color: var(--white); }
 .torneo-partido.mio { background: rgba(36, 208, 111, 0.08); border-radius: 6px; }
 
+.torneo-partido-wrap { padding: 3px 0; }
+.torneo-relato-btn {
+    display: block;
+    margin: 4px auto 0;
+    padding: 3px 12px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 11px;
+    cursor: pointer;
+}
+.torneo-relato-btn:hover { border-color: var(--green); color: var(--green); }
+
 /* Selector de mentalidad de la fecha */
 .torneo-ment {
     margin: 18px 0;

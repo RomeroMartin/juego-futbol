@@ -213,7 +213,20 @@ async function comenzarPartido() {
     registrando = false;
     if (boton) { boton.disabled = false; boton.textContent = "COMENZAR PARTIDO"; }
 
-    // Relato progresivo antes del resultado.
+    // Relato progresivo antes del resultado (flujo vs IA: sin "volver externo").
+    volverExterno = null;
+    reproducirRelato(generarRelato(registro));
+    showScreen("relatoScreen");
+}
+
+
+// Reproduce el relato de un partido EXTERNO (torneo/amistoso) reutilizando esta
+// pantalla. Al terminar o saltear, en vez de ir al resultado vs IA, ejecuta
+// `onVolver` (que devuelve a quien lo abrió).
+let volverExterno = null;
+
+export function reproducirRelatoExterno(registro, onVolver) {
+    volverExterno = onVolver || null;
     reproducirRelato(generarRelato(registro));
     showScreen("relatoScreen");
 }
@@ -274,6 +287,13 @@ function detenerRelato() {
 // El botón saltea (durante el relato) o va al resultado (al terminar).
 function terminarRelato() {
     detenerRelato();
+    // Relato externo (torneo/amistoso): volver a quien lo abrió, no al resultado vs IA.
+    if (volverExterno) {
+        const fn = volverExterno;
+        volverExterno = null;
+        fn();
+        return;
+    }
     if (ultimoRegistro) {
         renderResultado(ultimoRegistro);
         showScreen("resultadoScreen");
