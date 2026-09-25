@@ -1,13 +1,14 @@
-# ESTADO — Después de la Etapa 10A (Torneos: jugar la liga) 🏆⚽
+# ESTADO — Torneos reiniciables + jugar fecha de a uno + equipo editable entre fechas 🏆⚽
 
-> **Última sesión: Etapa 10A** (fixture de liga, jugar/avanzar fechas con
-> simulación en el servidor, tabla de posiciones y mentalidad editable por fecha).
-> El detalle está en la **sección 9**, al final. Secciones previas: **8** = 9B
-> (armado con exclusividad), **7** = 9A (sala), **1–6** = Etapa 8.
+> **Última sesión: mejoras post-Etapa 10 pedidas por el grupo** (no es una etapa
+> del plan original). El detalle está en la **sección 11**, al final. Secciones
+> previas: **9** = Etapa 10A, **8** = 9B, **7** = 9A, **1–6** = Etapa 8.
 >
-> **Sigue: Etapa 10B** — recompensas al finalizar (§43), sobre pre-partido de
-> torneo (§15.2), puntos por partido (§15.3), abandono 0-3 (§39) y amistosos
-> entre usuarios (§32).
+> **Sigue pendiente (Etapa 10B, sin tocar en esta sesión):** amistosos entre
+> usuarios (§32) y abandono 0-3 (§39).
+>
+> ⚠️ **Requiere `firebase deploy`** (hay Cloud Functions nuevas y modificadas)
+> antes de poder testear.
 
 ---
 
@@ -405,3 +406,128 @@ Devolución del grupo tras jugar un torneo completo. Se hizo:
 - El header (Fichas / paquetes) no se refresca en vivo tras ganar premios o recibir
   el sobre: hay que recargar. Se avisa en pantalla. Mejorable con una re-hidratación
   puntual del doc de usuario.
+
+---
+
+## 11. Post-Etapa 10 — reinicio/borrado de torneos, fecha de a uno, equipo editable entre fechas
+
+Pedido directo del grupo tras jugar varios torneos. **No es una etapa del plan
+original**; toca una decisión ya cerrada del doc maestro (B6/§17.3), revisada
+con el usuario antes de implementar y actualizada en el doc.
+
+### Qué se implementó
+
+**1. Torneos reiniciables + borrado (para no crear un torneo nuevo cada vez).**
+- `reiniciarTorneo(torneoId)` (Cloud Function, solo creador, solo `FINALIZADO`):
+  revalida el pool mínimo (§37, las colecciones cambiaron desde el armado
+  original), libera todos los equipos armados (cada uno re-arma desde cero) y
+  vuelve a `ARMADO` con una ventana de 24hs nueva. Mismo código, mismos
+  participantes.
+- `borrarTorneo(torneoId)` (Cloud Function, solo creador, solo `FINALIZADO`):
+  borra el documento del torneo y la subcolección de equipos.
+- UI: dos botones nuevos para el creador en un torneo `FINALIZADO`.
+
+**2. Jugar la fecha de a uno, con relato (§41.5, nuevo).**
+- La simulación sigue siendo atómica en el servidor (nada cambió en
+  `avanzarFecha` respecto a **quién decide**). Lo que cambia es la UI: al
+  terminar `JUGAR FECHA`, se abre una pantalla con la lista de los partidos de
+  esa fecha (ya jugados) para ver el relato de a uno — de **cualquier**
+  partido de la fecha, no solo el propio — antes de pasar a la tabla.
+  Reutiliza el mecanismo de relato que ya existía para partidos históricos del
+  fixture (se factorizó en `construirRegistroRelato`).
+
+**3. Equipo editable entre fechas — revierte B6/§17.3 (decisión revisada, no
+solo extendida).**
+- Antes: formación y XI quedaban congelados apenas cerraba el armado inicial;
+  solo la mentalidad era libre entre fechas.
+- Ahora: se abre una **ventana de 1 hora** entre fecha y fecha (y antes de la
+  fecha 1, al iniciar el torneo) donde formación, XI y mentalidad son
+  editables con la misma pantalla y la misma exclusividad del armado inicial
+  (§38: reclamar/liberar). El organizador puede jugar la fecha siguiente en
+  cualquier momento, aunque no haya pasado la hora — eso cierra la ventana de
+  hecho (usa el equipo tal como esté en ese instante).
+- **Guardrail agregado:** como ahora se puede liberar un jugador sin
+  reemplazarlo, `avanzarFecha` valida que todos los equipos que juegan esa
+  fecha tengan el XI completo (mismo criterio que ya usaba `iniciarTorneo`) y
+  devuelve `{ok:false, incompletos}` en vez de romperse si a alguien le falta.
+
+### Archivos modificados
+- `functions/index.js`:
+  - `armadoAbierto`/`exigirArmadoAbierto` → generalizados a
+    `ventanaTorneoAbierta`/`exigirEdicionAbierta` (cubren ARMADO y EN_CURSO).
+  - `iniciarTorneo` y `avanzarFecha`: abren/cierran `ventanaEntreFechasCierra`
+    (1h) en el doc del torneo; `avanzarFecha` valida XI completo antes de
+    simular.
+  - `elegirFormacionTorneo`, `reclamarJugador`, `liberarJugador`: usan la
+    nueva `exigirEdicionAbierta` en vez de la vieja (solo ARMADO).
+  - Nuevas: `reiniciarTorneo`, `borrarTorneo`.
+- `js/core/nube.js`: wrappers `reiniciarTorneoNube`, `borrarTorneoNube`.
+- `js/ui/torneos.js`:
+  - `ventanaAbierta` → `edicionAbiertaCliente` (mismo criterio que el servidor,
+    ahora cubre EN_CURSO).
+  - Nuevo bloque reutilizable `pintarEdicionEquipo` (selector de
+    formación/cancha/picker/mentalidad), usado tanto en `pintarArmado` como en
+    `pintarCompeticion` cuando la ventana entre fechas está abierta.
+  - Nuevas: `pintarFechaJugada`, `onVerRelatoFecha`, `construirRegistroRelato`
+    (factorizado de `onVerRelato`), `pintarAccionesCreadorFinalizado`,
+    `onReiniciarTorneo`, `onBorrarTorneo`.
+  - `onAvanzarFecha` ahora activa la pantalla de "fecha jugada" en vez de ir
+    directo a la tabla.
+- `css/estilos.css`: `.torneo-acciones-fin`, `.torneo-borrar`.
+- `docs/Futbol_Figuritas_Proyecto_v3.md`: §17.3 reescrita (B6 revisada, no
+  cerrada), tabla del Apéndice B y sus fundamentos/condiciones de revisión
+  actualizados, §35 (schema) con `ventanaEntreFechasCierra`, §41.5 nueva (ver
+  fecha de a uno), §43.1 nueva (reiniciar/borrar), y la aclaración de §15.2
+  sobre el sobre pre-partido (ya no dice "no se puede usar en el torneo en
+  curso": ahora sí, si está libre y se reclama en la ventana entre fechas).
+
+### Decisiones tomadas con el usuario (antes de codear)
+- Formación **y** jugadores editables entre fechas (no solo mentalidad):
+  confirmado explícitamente, revierte B6.
+- Reiniciar torneo = re-armar todo de cero (no mantener los equipos previos),
+  porque las colecciones cambian con nuevos sobres abiertos.
+- El relato "de a uno" se puede ver de **todos** los partidos de la fecha
+  (espectador), no solo el propio.
+- Ventana entre fechas: **1 hora**, pero el organizador la puede cerrar antes
+  jugando la fecha directamente (no hizo falta una Cloud Function separada de
+  "cerrar ventana": jugar la fecha ya usa el equipo tal como esté en ese
+  instante).
+
+### No se tocó
+- `firestore.rules`: no hizo falta. Los torneos ya eran `allow write: if
+  false` para el cliente; las Cloud Functions nuevas usan el Admin SDK como
+  las demás.
+- `functions/juego/` (copia cliente↔servidor de config/motor): no se tocó
+  ningún valor de balance ni el motor, así que no hubo que resincronizar.
+- Abandono (§39) y amistosos (§32): siguen pendientes de la Etapa 10B, sin
+  relación con este cambio.
+
+### Cómo testear
+1. `firebase deploy` (sube las 2 funciones nuevas y las 5 modificadas).
+2. **Jugar fecha de a uno:** en un torneo `EN_CURSO`, tocar "JUGAR FECHA N" →
+   debe abrir la pantalla con la lista de partidos de esa fecha (marcador ya
+   definido) y un botón "▶ Ver partido" por cada uno, incluidos los que no son
+   tuyos. Ver el relato de alguno, volver, confirmar que dice "✓ Ver de nuevo".
+   Tocar "Continuar" → pasa a la pantalla normal de competencia.
+3. **Equipo editable entre fechas:** después de jugar una fecha (o de iniciar
+   el torneo, antes de la fecha 1), la pantalla de competencia debe mostrar
+   "Tu equipo para la próxima fecha" con la cancha editable — liberar un
+   jugador y confirmar que en otra cuenta se puede reclamar. Cambiar de
+   formación y confirmar que libera los reclamos. Dejar pasar la hora (o
+   simular con la fecha del sistema) y confirmar que el equipo queda
+   congelado ("🔒 Equipo congelado hasta la próxima fecha").
+4. **Guardrail de XI incompleto:** liberar un jugador sin reemplazarlo y tocar
+   "JUGAR FECHA" → debe avisar quién tiene el equipo incompleto, sin romper
+   nada ni avanzar la fecha.
+5. **Reiniciar torneo:** con un torneo `FINALIZADO`, como creador, tocar "🔄
+   Reiniciar torneo" → confirma, y el torneo debe volver a "Armando equipos"
+   con los equipos vacíos (todos reclaman de nuevo) y el mismo código.
+6. **Borrar torneo:** con un torneo `FINALIZADO`, tocar "🗑 Borrar torneo" →
+   confirma, y el torneo debe desaparecer de "Mis torneos" para todos los
+   participantes.
+
+### Advertencias para la próxima sesión
+- Si se toca `config/` o el motor, recordar sincronizar `js/` ↔
+  `functions/juego/` (no aplica a este cambio).
+- Queda pendiente, de la Etapa 10B: amistosos entre usuarios (§32) y abandono
+  0-3 (§39).
