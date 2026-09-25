@@ -39,7 +39,9 @@ import {
     listarPoolReservaNube,
     iniciarTorneoNube,
     avanzarFechaNube,
-    guardarMentalidadTorneoNube
+    guardarMentalidadTorneoNube,
+    reiniciarTorneoNube,
+    borrarTorneoNube
 } from "../core/nube.js";
 
 
@@ -63,6 +65,11 @@ let slotAbierto = null;      // slot cuyo selector de jugador está abierto (o n
 let reservaCandidatos = null; // candidatos del Pool de Reserva ya pedidos (o null)
 let cargandoReserva = false;
 let mensajeArmado = null;    // aviso visible en pantalla { tipo:'ok'|'error'|'info', texto } (mejor que alert en mobile)
+
+// Pantalla "fecha jugada" (post-Etapa 10): tras JUGAR FECHA se muestra la
+// lista de partidos de esa fecha para ver el relato de a uno, antes de pasar
+// a la tabla. { torneoId, fecha, vistos: Set<partidoId> } o null.
+let fechaRecienJugada = null;
 
 const POS_NOMBRE = { POR: "arqueros", DEF: "defensores", MED: "mediocampistas", DEL: "delanteros" };
 const POS_SINGULAR = { POR: "arquero", DEF: "defensor", MED: "mediocampista", DEL: "delantero" };
@@ -98,6 +105,7 @@ export function detenerTorneos() {
     detenerSubEquipo();
     torneos = [];
     detalleId = null;
+    fechaRecienJugada = null;
     resetPicker();
 }
 
@@ -196,7 +204,11 @@ function pintarDetalle(c) {
     // Etapa 10A: en curso / finalizado se juega y se ve la liga.
     if (t.estado === "EN_CURSO" || t.estado === "FINALIZADO") {
         asegurarSubEquipo(t.id, uid);
-        pintarCompeticion(c, t, uid);
+        if (fechaRecienJugada && fechaRecienJugada.torneoId === t.id) {
+            pintarFechaJugada(c, t, fechaRecienJugada);
+        } else {
+            pintarCompeticion(c, t, uid);
+        }
         return;
     }
 
@@ -257,18 +269,13 @@ function pintarSala(c, t, uid) {
 // ==========================================
 
 function pintarArmado(c, t, uid) {
-    const abierta = ventanaAbierta(t);
+    const abierta = edicionAbiertaCliente(t);
 
     // Todavía no eligió formación: pedirla primero (crea el equipo del torneo).
     if (!equipoTorneo) {
         pintarElegirFormacion(c, t, abierta);
         return;
     }
-
-    const formacion = equipoTorneo.formacion;
-    const posDeSlot = mapaSlotPosicion(formacion);
-
-    const cancha = pintarCancha(t, uid, formacion);
 
     // Barra de estado de la ventana.
     const barra = abierta
@@ -278,23 +285,8 @@ function pintarArmado(c, t, uid) {
            </div>`
         : `<div class="torneo-aviso">
                🔒 <strong>Equipo congelado.</strong> La ventana de armado cerró: ya no se puede
-               modificar el equipo. <em>Jugar la fecha llega en la próxima actualización del juego.</em>
+               modificar el equipo. Esperá a que el creador inicie el torneo.
            </div>`;
-
-    // Selector de formación (solo con ventana abierta).
-    const selector = abierta ? pintarSelectorFormacion(formacion) : "";
-
-    // Atajo: copiar el equipo del modo normal (respeta la exclusividad; salta los
-    // jugadores que otro ya reclamó). Solo con ventana abierta.
-    const copiar = abierta
-        ? `<button id="torneoCopiarIA" class="secondary-button torneo-copiar">📋 Copiar mi equipo del modo normal</button>`
-        : "";
-
-    // Selector de jugador para un slot (solo con ventana abierta).
-    const picker = (abierta && slotAbierto) ? pintarPicker(t, uid, posDeSlot[slotAbierto]) : "";
-
-    // Selector de mentalidad (§17.3): editable durante el armado y entre fechas.
-    const mentalidad = pintarSelectorMentalidad();
 
     // Botón de iniciar el torneo (solo el creador). Al iniciar se cierra el
     // armado, se genera el fixture y se juega la primera fecha (§40, §41).
@@ -314,13 +306,7 @@ function pintarArmado(c, t, uid) {
 
             ${barra}
             ${bannerMensaje()}
-            ${selector}
-            ${copiar}
-
-            <h3>Tu equipo del torneo (${formacion})</h3>
-            ${cancha}
-            ${picker}
-            ${mentalidad}
+            ${pintarEdicionEquipo(t, uid, abierta)}
             ${iniciar}
         </div>
     `;
@@ -336,6 +322,33 @@ function pintarArmado(c, t, uid) {
 
     const btnMent = document.getElementById("torneoGuardarMent");
     if (btnMent) btnMent.addEventListener("click", () => onGuardarMentalidad(t.id));
+}
+
+
+// Bloque reutilizable de edición del equipo del torneo: selector de formación,
+// atajo de copiar del modo normal, cancha, picker y mentalidad. Se usa tanto en
+// el armado inicial (ARMADO) como en la ventana entre fechas (EN_CURSO): en
+// ambos casos requiere que ya exista `equipoTorneo` (formación elegida).
+function pintarEdicionEquipo(t, uid, abierta) {
+    const formacion = equipoTorneo.formacion;
+    const posDeSlot = mapaSlotPosicion(formacion);
+    const cancha = pintarCancha(t, uid, formacion);
+
+    const selector = abierta ? pintarSelectorFormacion(formacion) : "";
+    const copiar = abierta
+        ? `<button id="torneoCopiarIA" class="secondary-button torneo-copiar">📋 Copiar mi equipo del modo normal</button>`
+        : "";
+    const picker = (abierta && slotAbierto) ? pintarPicker(t, uid, posDeSlot[slotAbierto]) : "";
+    const mentalidad = pintarSelectorMentalidad();
+
+    return `
+        ${selector}
+        ${copiar}
+        <h3>Tu equipo del torneo (${formacion})</h3>
+        ${cancha}
+        ${picker}
+        ${mentalidad}
+    `;
 }
 
 
@@ -406,11 +419,11 @@ function pintarCancha(t, uid, formacion) {
                     <div class="torneo-slot ocupado" data-slot="${slot}">
                         <strong>${escapar(jugador?.name || "Jugador")}</strong>
                         <small>${escapar(jugador?.club || "")}${esReserva ? " · préstamo" : ""}</small>
-                        ${ventanaAbierta(t) ? `<button class="torneo-slot-x" data-liberar="${pid}" title="Liberar">✕</button>` : ""}
+                        ${edicionAbiertaCliente(t) ? `<button class="torneo-slot-x" data-liberar="${pid}" title="Liberar">✕</button>` : ""}
                     </div>`;
             }
             return `
-                <button class="torneo-slot vacio" data-abrir-slot="${slot}" ${ventanaAbierta(t) ? "" : "disabled"}>
+                <button class="torneo-slot vacio" data-abrir-slot="${slot}" ${edicionAbiertaCliente(t) ? "" : "disabled"}>
                     <span>＋ ${POS_SINGULAR[position]}</span>
                 </button>`;
         }).join("");
@@ -491,6 +504,7 @@ function pintarCompeticion(c, t, uid) {
     const finalizado = t.estado === "FINALIZADO";
     const soyParticipante = t.participantes.includes(uid);
     const totalFechas = t.totalFechas || (t.fixture?.length || "");
+    const abierta = !finalizado && edicionAbiertaCliente(t);
 
     // Campeón + premio propio, si el torneo terminó (§43).
     let cabecera = "";
@@ -505,10 +519,23 @@ function pintarCompeticion(c, t, uid) {
            </div>`;
     }
 
-    // Cambiar mi mentalidad para la próxima fecha (solo en curso).
-    const bloqueMent = (!finalizado && soyParticipante && equipoTorneo)
-        ? pintarSelectorMentalidad()
-        : "";
+    // Editar el equipo (formación/jugadores/mentalidad) para la próxima fecha.
+    let bloqueEdicion = "";
+    if (!finalizado && soyParticipante && equipoTorneo) {
+        const avisoVentana = abierta
+            ? `<div class="torneo-aviso torneo-aviso-ok">
+                   🟢 <strong>Podés editar tu equipo.</strong> Cierra en ${textoTiempoRestante(t.ventanaEntreFechasCierra)},
+                   o antes si el organizador juega la fecha. Cambiar de formación o sacar un jugador lo libera para el resto.
+               </div>`
+            : `<div class="torneo-aviso">
+                   🔒 <strong>Equipo congelado hasta la próxima fecha.</strong> La mentalidad se puede cambiar igual.
+               </div>`;
+        bloqueEdicion = `
+            <h3>Tu equipo para la próxima fecha</h3>
+            ${avisoVentana}
+            ${pintarEdicionEquipo(t, uid, abierta)}
+        `;
+    }
 
     // Botón de jugar la fecha.
     let bloqueAvance = "";
@@ -521,6 +548,9 @@ function pintarCompeticion(c, t, uid) {
         }
     }
 
+    // Reiniciar / borrar el torneo (solo el creador, solo terminado).
+    const accionesFin = (finalizado && esCreador) ? pintarAccionesCreadorFinalizado() : "";
+
     c.innerHTML = `
         <button class="back-button" id="torneoVolverLista">← Mis torneos</button>
         <div class="torneo-detalle">
@@ -532,9 +562,11 @@ function pintarCompeticion(c, t, uid) {
             <h3>Tabla de posiciones</h3>
             ${pintarTabla(t, uid)}
 
-            ${bloqueMent}
             ${bloqueAvance}
             ${!finalizado ? `<p class="torneo-nota">🎁 Cada fecha que jugás te da 1 sobre gratis (aparece en tus paquetes; recargá para verlo).</p>` : ""}
+
+            ${bloqueEdicion}
+            ${accionesFin}
 
             <h3>Fixture</h3>
             ${pintarFixture(t, uid)}
@@ -545,9 +577,31 @@ function pintarCompeticion(c, t, uid) {
     if (btnAv) btnAv.addEventListener("click", () => onAvanzarFecha(t.id));
     const btnMent = document.getElementById("torneoGuardarMent");
     if (btnMent) btnMent.addEventListener("click", () => onGuardarMentalidad(t.id));
+    if (!finalizado) {
+        enganchesArmado(t, uid, abierta);
+        const btnCopiar = document.getElementById("torneoCopiarIA");
+        if (btnCopiar) btnCopiar.addEventListener("click", () => onCopiarEquipoIA(t));
+    }
     cont().querySelectorAll("[data-relato]").forEach(b =>
         b.addEventListener("click", () => onVerRelato(t, b.dataset.relato))
     );
+    if (finalizado && esCreador) {
+        const btnReiniciar = document.getElementById("torneoReiniciar");
+        if (btnReiniciar) btnReiniciar.addEventListener("click", () => onReiniciarTorneo(t));
+        const btnBorrar = document.getElementById("torneoBorrar");
+        if (btnBorrar) btnBorrar.addEventListener("click", () => onBorrarTorneo(t));
+    }
+}
+
+
+// Botones del creador sobre un torneo ya FINALIZADO: reiniciarlo para jugar
+// otra temporada con el mismo grupo, o borrarlo definitivamente.
+function pintarAccionesCreadorFinalizado() {
+    return `
+        <div class="torneo-acciones-fin">
+            <button id="torneoReiniciar" class="secondary-button">🔄 Reiniciar torneo</button>
+            <button id="torneoBorrar" class="secondary-button torneo-borrar">🗑 Borrar torneo</button>
+        </div>`;
 }
 
 
@@ -609,8 +663,8 @@ function pintarSelectorMentalidad() {
         .map(k => `<option value="${k}" ${k === def ? "selected" : ""}>${MENTALIDADES_DEF[k].etiqueta}</option>`).join("");
     return `
         <div class="torneo-ment">
-            <h3>Tu mentalidad para la próxima fecha</h3>
-            <p class="torneo-nota">La formación y el XI están congelados; solo la mentalidad es editable (§17.3).</p>
+            <h3>Mentalidad</h3>
+            <p class="torneo-nota">La mentalidad se puede cambiar siempre, aunque el resto del equipo esté congelado.</p>
             <div class="torneo-ment-selects">
                 <label>Ofensiva<select id="mentOf">${opsOf}</select></label>
                 <label>Defensiva<select id="mentDef">${opsDef}</select></label>
@@ -657,9 +711,39 @@ function equipoTorneoAMotor(equipoDoc, id) {
     };
 }
 
-// Ver el relato de un partido de torneo ya jugado (A3): re-simula con la semilla
-// guardada (mismo resultado) y reutiliza la pantalla de relato. Si el que mira
-// jugó ese partido, se lo pone como "usuario" para el color de goles a favor/contra.
+// Arma el registro de relato de un partido de torneo ya jugado (A3): re-simula
+// con la semilla guardada (mismo resultado, el motor no es simétrico así que
+// corre siempre local→visitante como el servidor). Si el que mira jugó ese
+// partido, se lo pone como "usuario" para el color de goles a favor/contra; si
+// es un partido ajeno (espectador), queda "usuario" el local, sin efecto en el
+// marcador, solo en el color.
+async function construirRegistroRelato(t, pt) {
+    const uid = usuarioActual()?.uid;
+    const [eqL, eqV] = await Promise.all([
+        obtenerEquipoTorneo(t.id, pt.local),
+        obtenerEquipoTorneo(t.id, pt.visitante)
+    ]);
+    if (!eqL || !eqV) throw new Error("No se encontraron los equipos del partido.");
+
+    const viewerVis = pt.visitante === uid;   // ¿el que mira jugó de visitante?
+
+    const localM = equipoTorneoAMotor(eqL, viewerVis ? "RIVAL" : "USUARIO");
+    const visM   = equipoTorneoAMotor(eqV, viewerVis ? "USUARIO" : "RIVAL");
+    const r = simularPartido(localM.motor, visM.motor, pt.semilla);
+
+    return {
+        equipoUsuarioIds: viewerVis ? visM.ids : localM.ids,
+        equipoRivalIds:   viewerVis ? localM.ids : visM.ids,
+        nombreUsuario: t.nombres?.[viewerVis ? pt.visitante : pt.local] || "Local",
+        rivalNombre:   t.nombres?.[viewerVis ? pt.local : pt.visitante] || "Visitante",
+        semilla: pt.semilla,
+        golesUsuario: viewerVis ? pt.golesVisitante : pt.golesLocal,
+        golesRival:   viewerVis ? pt.golesLocal : pt.golesVisitante,
+        eventos: r.eventos
+    };
+}
+
+// Ver el relato de un partido de torneo ya jugado, desde el fixture histórico.
 async function onVerRelato(t, partidoId) {
     if (ocupado) return;
     const pt = partidoPorId(t, partidoId);
@@ -669,33 +753,7 @@ async function onVerRelato(t, partidoId) {
     mensajeArmado = { tipo: "info", texto: "Cargando el relato…" };
     pintar();
     try {
-        const uid = usuarioActual()?.uid;
-        const [eqL, eqV] = await Promise.all([
-            obtenerEquipoTorneo(t.id, pt.local),
-            obtenerEquipoTorneo(t.id, pt.visitante)
-        ]);
-        if (!eqL || !eqV) throw new Error("No se encontraron los equipos del partido.");
-
-        const viewerVis = pt.visitante === uid;   // ¿el que mira jugó de visitante?
-
-        // El motor SIEMPRE corre local(A) vs visitante(B) con la semilla, igual que
-        // el servidor (no es simétrico), así el marcador coincide. Solo cambia qué
-        // lado lleva la etiqueta "USUARIO" (para el color de goles a favor/contra).
-        const localM = equipoTorneoAMotor(eqL, viewerVis ? "RIVAL" : "USUARIO");
-        const visM   = equipoTorneoAMotor(eqV, viewerVis ? "USUARIO" : "RIVAL");
-        const r = simularPartido(localM.motor, visM.motor, pt.semilla);
-
-        const registro = {
-            equipoUsuarioIds: viewerVis ? visM.ids : localM.ids,
-            equipoRivalIds:   viewerVis ? localM.ids : visM.ids,
-            nombreUsuario: t.nombres?.[viewerVis ? pt.visitante : pt.local] || "Local",
-            rivalNombre:   t.nombres?.[viewerVis ? pt.local : pt.visitante] || "Visitante",
-            semilla: pt.semilla,
-            golesUsuario: viewerVis ? pt.golesVisitante : pt.golesLocal,
-            golesRival:   viewerVis ? pt.golesLocal : pt.golesVisitante,
-            eventos: r.eventos
-        };
-
+        const registro = await construirRegistroRelato(t, pt);
         mensajeArmado = null;
         reproducirRelatoExterno(registro, () => { showScreen("torneosScreen"); pintar(); });
     } catch (e) {
@@ -704,6 +762,72 @@ async function onVerRelato(t, partidoId) {
     } finally {
         ocupado = false;
     }
+}
+
+// Ver el relato de un partido desde la pantalla "fecha jugada" (post-Etapa 10):
+// además marca el partido como visto, para que la lista se actualice.
+async function onVerRelatoFecha(t, partidoId) {
+    if (ocupado) return;
+    const pt = partidoPorId(t, partidoId);
+    if (!pt || pt.golesLocal == null) return;
+
+    ocupado = true;
+    mensajeArmado = { tipo: "info", texto: "Cargando el relato…" };
+    pintar();
+    try {
+        const registro = await construirRegistroRelato(t, pt);
+        mensajeArmado = null;
+        if (fechaRecienJugada) fechaRecienJugada.vistos.add(partidoId);
+        reproducirRelatoExterno(registro, () => { showScreen("torneosScreen"); pintar(); });
+    } catch (e) {
+        mensajeArmado = { tipo: "error", texto: e?.message || "No se pudo abrir el relato." };
+        pintar();
+    } finally {
+        ocupado = false;
+    }
+}
+
+
+// Pantalla que se abre justo después de JUGAR FECHA: lista los partidos de esa
+// fecha (ya simulados por el servidor) para verlos de a uno con relato, antes
+// de pasar a la tabla actualizada.
+function pintarFechaJugada(c, t, info) {
+    const f = (t.fixture || []).find(x => x.fecha === info.fecha);
+    if (!f) { fechaRecienJugada = null; pintar(); return; }
+    const nombres = t.nombres || {};
+
+    const partidos = f.partidos.map(pt => {
+        const visto = info.vistos.has(pt.id);
+        return `
+            <div class="torneo-partido-wrap">
+                <div class="torneo-partido">
+                    <span class="pl">${escapar(nombres[pt.local] || "Jugador")}</span>
+                    <span class="mk jug">${pt.golesLocal} - ${pt.golesVisitante}</span>
+                    <span class="pv">${escapar(nombres[pt.visitante] || "Jugador")}</span>
+                </div>
+                <button class="torneo-relato-btn" data-relato-fecha="${pt.id}">
+                    ${visto ? "✓ Ver de nuevo" : "▶ Ver partido"}
+                </button>
+            </div>`;
+    }).join("");
+
+    c.innerHTML = `
+        <div class="torneo-detalle">
+            <span class="eyebrow">Fecha ${info.fecha} jugada</span>
+            <h2>${escapar(t.nombre)}</h2>
+            ${bannerMensaje()}
+            <p class="torneo-nota">Mirá el relato de los partidos de la fecha, de a uno, o pasá directo a la tabla.</p>
+            <div class="torneo-fecha actual">${partidos}</div>
+            <button id="torneoContinuarFecha" class="main-button">Continuar →</button>
+        </div>`;
+
+    cont().querySelectorAll("[data-relato-fecha]").forEach(b =>
+        b.addEventListener("click", () => onVerRelatoFecha(t, b.dataset.relatoFecha))
+    );
+    document.getElementById("torneoContinuarFecha").addEventListener("click", () => {
+        fechaRecienJugada = null;
+        pintar();
+    });
 }
 
 // Premio en Fichas según el puesto final (§43). Debe coincidir con el servidor.
@@ -984,8 +1108,14 @@ async function onAvanzarFecha(torneoId) {
     ocupado = true;
     mensajeArmado = null;
     try {
-        await avanzarFechaNube(torneoId);
-        // Resultados y tabla llegan por el listener.
+        const r = await avanzarFechaNube(torneoId);
+        if (r && r.ok === false) {
+            mensajeArmado = { tipo: "error", texto: "Todavía no se puede jugar la fecha. No completaron su equipo: "
+                + (r.incompletos || []).join(", ") + "." };
+        } else if (r && r.fechaJugada) {
+            // Abre la pantalla de "fecha jugada" para ver los relatos de a uno.
+            fechaRecienJugada = { torneoId, fecha: r.fechaJugada, vistos: new Set() };
+        }
     } catch (e) {
         mensajeArmado = { tipo: "error", texto: e?.message || "No se pudo jugar la fecha." };
     } finally {
@@ -1012,6 +1142,48 @@ async function onGuardarMentalidad(torneoId) {
     }
 }
 
+// Reinicia un torneo terminado: libera todos los equipos armados (cada uno
+// vuelve a elegir formación y jugadores) y vuelve a ARMADO con los mismos
+// participantes. Solo el creador.
+async function onReiniciarTorneo(t) {
+    if (ocupado) return;
+    if (!confirm("Reiniciar el torneo libera todos los equipos armados: cada uno vuelve a elegir "
+        + "formación y jugadores desde cero para la nueva temporada. ¿Seguís?")) return;
+    ocupado = true;
+    mensajeArmado = null;
+    try {
+        const r = await reiniciarTorneoNube(t.id);
+        if (r && r.ok === false) {
+            const v = r.validacion;
+            mensajeArmado = { tipo: "error", texto:
+                `No alcanza el plantel del grupo para reiniciar: faltan ${v.faltan} ${POS_NOMBRE[v.pos] || v.pos} `
+                + `distintos entre todos (hay ${v.conteo[v.pos]}, se necesitan ${v.requerido[v.pos]}).` };
+        }
+        // El paso a ARMADO llega por el listener.
+    } catch (e) {
+        mensajeArmado = { tipo: "error", texto: e?.message || "No se pudo reiniciar el torneo." };
+    } finally {
+        ocupado = false;
+        pintar();
+    }
+}
+
+// Borra definitivamente un torneo terminado. Solo el creador.
+async function onBorrarTorneo(t) {
+    if (ocupado) return;
+    if (!confirm(`Borrar "${t.nombre}" definitivamente. Esta acción no se puede deshacer. ¿Seguís?`)) return;
+    ocupado = true;
+    try {
+        await borrarTorneoNube(t.id);
+        volverALista();
+    } catch (e) {
+        mensajeArmado = { tipo: "error", texto: e?.message || "No se pudo borrar el torneo." };
+        pintar();
+    } finally {
+        ocupado = false;
+    }
+}
+
 
 // ==========================================
 // UTILIDADES
@@ -1021,6 +1193,7 @@ function volverALista() {
     detalleId = null;
     avisoValidacion = "";
     mensajeArmado = null;
+    fechaRecienJugada = null;
     detenerSubEquipo();
     resetPicker();
     pintar();
@@ -1035,11 +1208,17 @@ function bannerMensaje() {
     return `<div class="${clase}">${escapar(mensajeArmado.texto)}</div>`;
 }
 
-// ¿La ventana de armado sigue abierta? (ARMADO + fecha de cierre en el futuro).
-function ventanaAbierta(t) {
-    return t.estado === "ARMADO"
-        && t.ventanaArmadoCierra
-        && Date.now() < new Date(t.ventanaArmadoCierra).getTime();
+// ¿Se puede editar el equipo del torneo ahora mismo? Dos momentos posibles:
+// el armado inicial (ARMADO, ventana de 24hs) o la ventana de 1h que se abre
+// entre fechas una vez EN_CURSO (mismo criterio que el servidor).
+function edicionAbiertaCliente(t) {
+    if (t.estado === "ARMADO") {
+        return !!t.ventanaArmadoCierra && Date.now() < new Date(t.ventanaArmadoCierra).getTime();
+    }
+    if (t.estado === "EN_CURSO") {
+        return !!t.ventanaEntreFechasCierra && Date.now() < new Date(t.ventanaEntreFechasCierra).getTime();
+    }
+    return false;
 }
 
 // Texto legible del tiempo que falta para que cierre la ventana.

@@ -3207,3 +3207,19 @@ main {
 }
 
 .torneo-ment .secondary-button { width: 100%; margin: 0; }
+
+.torneo-acciones-fin {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 24px 0 6px;
+}
+
+.torneo-acciones-fin .secondary-button { flex: 1 1 200px; margin: 0; }
+
+.torneo-borrar {
+    color: #e05a5a;
+    border-color: rgba(220, 70, 70, 0.45);
+}
+
+.torneo-borrar:hover { background: rgba(220, 70, 70, 0.14); border-color: rgba(220, 70, 70, 0.6); }

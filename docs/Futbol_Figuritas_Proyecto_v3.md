@@ -443,9 +443,9 @@ Antes de cada partido de torneo, el usuario recibe **1 paquete gratis** que abre
 
 **Rendimiento:** un torneo de 8 participantes en formato liga de ida son 7 fechas → **7 sobres**. Ida y vuelta → **14 sobres**. Un grupo que juega un torneo por semana tiene flujo constante.
 
-> ⚠️ **Aclaración obligatoria en la UI.** Los jugadores que salgan de este sobre **no se pueden usar en el torneo en curso**, porque el XI queda congelado al cerrarse la ventana de armado (§36.1) y la formación es fija (§17.3). Van a tu colección y sirven para el próximo torneo, para amistosos y para intercambios.
+> ⚠️ **Aclaración en la UI.** Los jugadores que salgan de este sobre **no se pueden usar en la fecha que ya se jugó** (el XI de esa fecha ya estaba congelado cuando se simuló). Pero **sí se pueden usar en las fechas siguientes**, si están libres: desde la revisión de B6 (§17.3), formación y XI son editables en la ventana que se abre entre fechas — no hace falta esperar al próximo torneo.
 >
-> Si esto no se comunica claramente, el usuario abre un sobre, le sale un jugadorazo, intenta meterlo y se frustra. El ritual de abrir el sobre antes del partido se mantiene — solo hay que ser explícito sobre para qué sirve.
+> Si esto no se comunica claramente, el usuario abre un sobre, le sale un jugadorazo, intenta meterlo en la fecha que acaba de jugar y se frustra. El ritual de abrir el sobre antes del partido se mantiene — solo hay que ser explícito sobre para cuándo sirve.
 
 ### 15.3. Contador de puntos
 
@@ -651,13 +651,13 @@ function validarXI(xi, formacion) {
 
 Mientras falten posiciones, las stats se muestran como `—` y la interfaz indica `EQUIPO INCOMPLETO` **señalando qué posiciones faltan**. El botón `COMPETIR` queda deshabilitado.
 
-### 17.3. Formación congelada en torneos
+### 17.3. Equipo editable entre fechas
 
-> ✅ **Decisión B6 — CERRADA.** Dentro de un torneo: **la formación y el XI quedan congelados; la mentalidad es libre entre fechas.**
+> ✅ **Decisión B6 — REVISADA (post-V1.0, a pedido del grupo).** Dentro de un torneo: la formación, el XI y la mentalidad **congelan durante cada fecha** (el partido se simula con el equipo tal como estaba en ese instante), pero **se pueden volver a editar en la ventana de 1 hora que se abre entre fecha y fecha** — la misma pantalla del armado inicial, con la misma exclusividad (§38: el primero que reclama a un jugador se lo queda). El organizador puede cerrar esa ventana antes de que se cumpla la hora simplemente jugando la fecha siguiente cuando el grupo ya esté listo.
 
-**Por qué la formación no puede cambiarse a mitad de torneo:** es una contradicción directa con el sistema de exclusividad (PARTE VI). Si pasás de 4-3-3 a 3-5-2 necesitás 2 mediocampistas más, pero los que te servían ya fueron reclamados por otros participantes. Te quedarías **con un equipo inválido y sin forma de completarlo**, imposibilitado de seguir jugando el torneo.
+**Por qué se revisó (y cómo se resolvió la contradicción original con la exclusividad).** La versión original (§36, exclusividad "RECLAMO") congelaba formación y XI todo el torneo porque cambiar de formación a mitad de camino podía dejar a alguien sin forma de completar el equipo (los jugadores que necesitaba ya estaban reclamados por otros). Esa contradicción sigue siendo real dentro de una misma fecha — por eso el equipo con el que se juega cada fecha es el que estaba armado en el momento en que el creador la jugó, sin excepciones. Lo que cambió es que ahora, **entre una fecha y la siguiente**, se reabre la misma ventana de edición del armado inicial: se puede reclamar, liberar y cambiar de formación con las mismas reglas de exclusividad de siempre. Si alguien libera un jugador y no completa su XI antes de que se juegue la próxima fecha, esa fecha no se juega hasta que complete el equipo (mismo chequeo que exige `iniciarTorneo` al arrancar el torneo).
 
-**Por qué la mentalidad sí es libre:** no toca el XI, así que no genera ningún conflicto con el reclamo. Y como la mentalidad del rival no se revela antes del partido (§19.5), cambiarla no es explotable — es apostar a ciegas, que es exactamente la decisión interesante que el sistema busca generar.
+**Por qué la mentalidad sigue siendo la más libre de las tres:** no toca el XI, así que nunca genera conflicto de exclusividad, y como la mentalidad del rival no se revela antes del partido (§19.5), cambiarla no es explotable. Por eso la mentalidad se puede cambiar **en cualquier momento** durante el torneo, no solo dentro de la ventana de 1 hora entre fechas.
 
 ```javascript
 // Al cerrarse la ventana de armado del torneo:
@@ -1209,6 +1209,12 @@ Esto genera:
   },
 
   ventanaArmadoCierra: "2026-09-01T20:00:00Z",
+
+  // Ventana para editar formación/XI/mentalidad entre fechas, una vez EN_CURSO
+  // (§17.3, decisión B6 revisada). Se reabre 1h después de cada fecha jugada
+  // (o al iniciar el torneo, antes de la fecha 1); null cuando FINALIZADO.
+  ventanaEntreFechasCierra: "2026-09-05T21:00:00Z",
+
   fixture: [ /* partidos */ ],
   tabla: [ /* posiciones */ ],
   creadoEn: "2026-08-24T15:00:00Z"
@@ -1427,6 +1433,12 @@ En **Cloud Functions**, nunca en el cliente. El resultado se escribe en `torneos
 
 **Esta es una de las razones por las que Cloud Functions no es opcional** (ver §50.1).
 
+### 41.5. Ver la fecha jugada, partido por partido
+
+> ✅ **Post-V1.0, a pedido del grupo.** El resultado de la fecha sigue decidiéndose de una sola vez en el servidor (§41.4) — nada de esto cambia quién decide. Lo que cambia es cómo se muestra en el cliente.
+
+Al tocar **JUGAR FECHA**, en vez de saltar directo a la tabla actualizada, se abre una pantalla con la lista de los partidos de esa fecha (ya simulados). Cada uno tiene un botón para ver su relato completo (re-simulado en el cliente con la semilla guardada, igual que el relato de cualquier partido histórico del fixture, §53.1). Se puede ver el relato de cualquier partido de la fecha, no solo el propio — es una liga entre amigos, así que mirar el partido de los demás también importa. Quien prefiera no mirar puede pasar directo a la tabla.
+
 ## 42. Tabla de posiciones
 
 ```text
@@ -1447,6 +1459,16 @@ Puntos: 3 / 1 / 0. Desempate: puntos → diferencia de gol → goles a favor →
 | Participar y completar todos los partidos | 100 |
 
 Se otorgan **por Cloud Function**, nunca desde el cliente.
+
+### 43.1. Reiniciar y borrar un torneo terminado
+
+> ✅ **Post-V1.0, a pedido del grupo.** Para no tener que crear un torneo nuevo (con código nuevo y re-invitar a todos) cada vez que el mismo grupo quiere jugar otra temporada.
+
+**Reiniciar** (solo el creador, solo con el torneo `FINALIZADO`): revalida el pool mínimo (§37, las colecciones pudieron cambiar desde el armado original), libera todos los equipos armados —cada uno vuelve a elegir formación y jugadores desde cero— y el torneo vuelve a `ARMADO` con una ventana de armado nueva de 24hs. Mismo código de invitación, mismos participantes.
+
+**Borrar** (solo el creador, solo con el torneo `FINALIZADO`, para no borrar por error uno en curso): elimina el documento del torneo y los equipos armados. No se puede deshacer.
+
+Ambas corren por **Cloud Function**, nunca desde el cliente (mismo criterio que el resto de PARTE VI).
 
 ---
 
@@ -2004,7 +2026,7 @@ Reemplazar la fórmula provisional de §20.3 por atributos propios: Reflejos, Es
 | **B3** | Economía de paquetes | **5 de bienvenida** + **1 sobre antes de cada partido de torneo** + **3 sobres PREMIUM a los 50 pts**. **La IA no otorga sobres ni puntos** | §15 |
 | **B4** | Monetización | **NO monetizar.** Diseñar sin cerrar puertas (monedas como objeto, config centralizada, registro de transacciones) | §48 |
 | **B5** | Nombres reales | **Sí, en uso privado sin cobrar.** Dataset intercambiable, decisión revisable sin refactor | §49 |
-| **B6** | Cambio de mentalidad en torneo | **Mentalidad libre entre fechas. Formación y XI congelados** | §17.3 |
+| **B6** | Edición de equipo en torneo | **Revisada (post-V1.0): formación y XI editables en una ventana de 1h entre fechas (misma exclusividad del armado). Mentalidad siempre libre** | §17.3 |
 | **B7** | Pool insuficiente en torneos | **Limitar participantes + Pool de Reserva** con jugadores COMÚN reales que nadie posee (máx. 3, en préstamo) | §37.1 |
 
 ## B.1. Fundamentos resumidos
@@ -2017,7 +2039,7 @@ Reemplazar la fórmula provisional de §20.3 por atributos propios: Reflejos, Es
 
 **B4 y B5 son la misma decisión disfrazada de dos.** Monetizar exige escala, la escala exige abrir el juego, y abrir el juego activa el problema de derechos. No se puede avanzar en una sin tocar la otra.
 
-**B6 — La contradicción que se detectó al cerrar B1.** Permitir cambiar formación durante un torneo con exclusividad puede dejar a un participante con un equipo inválido e incompletable, porque los jugadores que necesita ya están reclamados.
+**B6 — La contradicción que se detectó al cerrar B1, resuelta acotando el alcance en vez de prohibiendo el cambio.** Permitir cambiar formación *durante una fecha en curso* puede dejar a un participante con un equipo inválido e incompletable. La solución no fue prohibir el cambio para siempre, sino limitarlo a la ventana entre fechas (donde no hay ningún partido corriendo) y exigir el XI completo antes de jugar la siguiente.
 
 **B7 — Jugadores reales antes que genéricos.** Un "Defensor Genérico 3" rompe la inmersión; un juvenil real que nadie tiene resuelve el mismo problema técnico con costo cero y aporta sabor.
 
@@ -2032,7 +2054,7 @@ Ninguna de estas decisiones es permanente. Cada una tiene un disparador explíci
 | B3 | El testeo muestre que el ritmo se siente lento o saturado → ajustar `config/economia.js` |
 | B4 | La V1.0 demuestre retención sostenida durante 2–3 meses |
 | B5 | Antes de abrir registro público o cobrar. **Nunca después** |
-| B6 | Solo si se elimina la exclusividad de torneos |
+| B6 | **Ya revisada** (post-V1.0): formación/XI editables entre fechas. Se volvería a mirar solo si se elimina del todo la exclusividad de torneos |
 | B7 | Si los grupos superan consistentemente los 8 participantes |
 
 ---

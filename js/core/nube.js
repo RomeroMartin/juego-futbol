@@ -279,6 +279,19 @@ export async function guardarMentalidadTorneoNube(torneoId, mentalidadOfensiva, 
     return res.data;
 }
 
+// Reinicia un torneo terminado (mismos participantes, equipos liberados para
+// re-armar). Devuelve { ok } o { ok:false, validacion } si el pool ya no alcanza.
+export async function reiniciarTorneoNube(torneoId) {
+    const res = await llamar("reiniciarTorneo")({ torneoId });
+    return res.data;
+}
+
+// Borra definitivamente un torneo terminado.
+export async function borrarTorneoNube(torneoId) {
+    const res = await llamar("borrarTorneo")({ torneoId });
+    return res.data;
+}
+
 
 // Cambia el nombre visible del usuario (perfil + torneos donde participa).
 export async function cambiarNombreNube(nombre) {

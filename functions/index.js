@@ -529,21 +529,36 @@ function slotsPorPosicion(formacion) {
     return m;
 }
 
-// Un torneo admite cambios de armado solo en estado ARMADO y con la ventana de
-// 24hs todavía abierta. Cerrada la ventana, el equipo está congelado (§17.3).
-function armadoAbierto(t) {
-    return t.estado === "ARMADO"
-        && t.ventanaArmadoCierra
-        && Date.now() < new Date(t.ventanaArmadoCierra).getTime();
+// Duración de la ventana para editar el equipo entre fechas, una vez que el
+// torneo está EN_CURSO (post-armado). El organizador puede cerrarla antes
+// jugando la fecha directamente; esto es solo el límite automático.
+const VENTANA_ENTRE_FECHAS_MS = 60 * 60 * 1000;   // 1 hora
+
+// Un torneo admite cambios de equipo (formación, jugadores, mentalidad) en dos
+// momentos: durante el armado inicial (ARMADO, ventana de 24hs, §36.1) y en la
+// ventana de 1 hora que se abre entre fechas una vez EN_CURSO. Cerrada la
+// ventana correspondiente, el equipo queda congelado hasta la próxima.
+function ventanaTorneoAbierta(t) {
+    if (t.estado === "ARMADO") {
+        return !!t.ventanaArmadoCierra && Date.now() < new Date(t.ventanaArmadoCierra).getTime();
+    }
+    if (t.estado === "EN_CURSO") {
+        return !!t.ventanaEntreFechasCierra && Date.now() < new Date(t.ventanaEntreFechasCierra).getTime();
+    }
+    return false;
 }
 
-// Exige que el que llama sea participante de un torneo con el armado abierto.
-// Devuelve los datos del torneo. Tira HttpsError con mensaje en español si no.
-function exigirArmadoAbierto(t, uid) {
+// Exige que el que llama sea participante de un torneo con la edición de
+// equipo abierta. Tira HttpsError con mensaje en español si no.
+function exigirEdicionAbierta(t, uid) {
     if (!t) throw new HttpsError("not-found", "El torneo no existe.");
     if (!t.participantes.includes(uid)) throw new HttpsError("permission-denied", "No sos participante de este torneo.");
-    if (t.estado !== "ARMADO") throw new HttpsError("failed-precondition", "El armado de este torneo no está abierto.");
-    if (!armadoAbierto(t)) throw new HttpsError("failed-precondition", "La ventana de armado ya cerró; el equipo quedó congelado.");
+    if (!["ARMADO", "EN_CURSO"].includes(t.estado)) {
+        throw new HttpsError("failed-precondition", "Este torneo no admite cambios de equipo.");
+    }
+    if (!ventanaTorneoAbierta(t)) {
+        throw new HttpsError("failed-precondition", "La ventana para editar el equipo está cerrada.");
+    }
 }
 
 // Conjunto de playerIds que ALGÚN participante del torneo posee en su colección.
@@ -600,7 +615,7 @@ export const elegirFormacionTorneo = onCall(async (request) => {
     return db.runTransaction(async (t) => {
         // TODAS las lecturas primero (Firestore exige leer antes de escribir).
         const torneo = (await t.get(ref)).data();
-        exigirArmadoAbierto(torneo, uid);
+        exigirEdicionAbierta(torneo, uid);
         const prev = (await t.get(equipoRef)).data();
 
         // Liberar todos los reclamos de este usuario (los slots de la nueva
@@ -646,7 +661,7 @@ export const reclamarJugador = onCall(async (request) => {
 
     return db.runTransaction(async (t) => {
         const torneo = (await t.get(ref)).data();
-        exigirArmadoAbierto(torneo, uid);
+        exigirEdicionAbierta(torneo, uid);
 
         const equipo = (await t.get(equipoRef)).data();
         if (!equipo) throw new HttpsError("failed-precondition", "Elegí una formación antes de reclamar jugadores.");
@@ -722,7 +737,7 @@ export const liberarJugador = onCall(async (request) => {
 
     return db.runTransaction(async (t) => {
         const torneo = (await t.get(ref)).data();
-        exigirArmadoAbierto(torneo, uid);
+        exigirEdicionAbierta(torneo, uid);
 
         const reclamados = torneo.jugadoresReclamados || {};
         if (reclamados[playerId] !== uid) {
@@ -961,6 +976,9 @@ export const iniciarTorneo = onCall(async (request) => {
             tabla,
             fechaActual: 1,
             totalFechas: fixture.length,
+            // Ventana de 1h para revisar/editar el equipo antes de la fecha 1
+            // (mismo mecanismo que entre fechas, ver avanzarFecha).
+            ventanaEntreFechasCierra: new Date(Date.now() + VENTANA_ENTRE_FECHAS_MS).toISOString(),
             ultimoAvanceEn: ahoraISO()
         });
 
@@ -1000,12 +1018,22 @@ export const avanzarFecha = onCall(async (request) => {
         const idx = fecha - 1;
         if (idx < 0 || idx >= fixture.length) throw new HttpsError("failed-precondition", "No hay más fechas para jugar.");
 
-        // Equipos de los que juegan esta fecha (congelados, se leen tal cual).
+        // Equipos de los que juegan esta fecha, tal como estén en este instante
+        // (formación/XI se pueden editar entre fechas, §17.3).
         const jornada = fixture[idx];
         const uids = new Set();
         for (const pt of jornada.partidos) { uids.add(pt.local); uids.add(pt.visitante); }
         const equipos = {};
         for (const p of uids) equipos[p] = (await t.get(db.doc(`torneos/${torneoId}/equipos/${p}`))).data();
+
+        // Como el equipo se puede editar entre fechas, alguien puede haber
+        // liberado un jugador y no haberlo reemplazado todavía: verificar XI
+        // completo antes de simular (mismo criterio que iniciarTorneo).
+        const incompletos = [];
+        for (const p of uids) {
+            if (!xiCompleto(equipos[p])) incompletos.push(torneo.nombres?.[p] || "Jugador");
+        }
+        if (incompletos.length > 0) return { ok: false, incompletos };
 
         // Simular en el servidor (§41.4) los partidos aún sin jugar.
         for (const pt of jornada.partidos) {
@@ -1063,6 +1091,12 @@ export const avanzarFecha = onCall(async (request) => {
             fechaActual: finalizado ? fixture.length : siguiente,
             estado: finalizado ? "FINALIZADO" : "EN_CURSO",
             premiosOtorgados: finalizado ? true : (torneo.premiosOtorgados || false),
+            // Si sigue el torneo, se abre una nueva ventana de 1h para editar el
+            // equipo antes de la próxima fecha (§17.3). El organizador puede
+            // jugarla antes igual, sin esperar la hora.
+            ventanaEntreFechasCierra: finalizado
+                ? FieldValue.delete()
+                : new Date(Date.now() + VENTANA_ENTRE_FECHAS_MS).toISOString(),
             ultimoAvanceEn: ahoraISO()
         });
 
@@ -1099,6 +1133,101 @@ export const guardarMentalidadTorneo = onCall(async (request) => {
         t.set(equipoRef, { mentalidadOfensiva, mentalidadDefensiva, actualizadoEn: ahoraISO() }, { merge: true });
         return { ok: true };
     });
+});
+
+
+// ==========================================
+// TORNEOS — reiniciar y borrar (post-Etapa 10, a pedido del grupo)
+// ==========================================
+//
+// Para no tener que crear un torneo nuevo cada vez que el mismo grupo quiere
+// jugar otra temporada: el creador puede reiniciar un torneo FINALIZADO (vuelve
+// a ARMADO, mismos participantes) o borrarlo definitivamente.
+
+// Reinicia un torneo terminado: libera todos los equipos armados (cada uno
+// vuelve a elegir formación y jugadores desde cero, porque las colecciones
+// pudieron cambiar) y vuelve a ARMADO con una ventana de armado nueva de 24hs.
+// Revalida el pool mínimo (§37) por si ya no alcanza. Solo el creador.
+export const reiniciarTorneo = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const torneoId = request.data?.torneoId;
+    if (!torneoId) throw new HttpsError("invalid-argument", "Falta el torneo.");
+
+    const ref = db.doc(`torneos/${torneoId}`);
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError("not-found", "El torneo no existe.");
+    const t = snap.data();
+
+    if (t.creadorId !== uid) throw new HttpsError("permission-denied", "Solo el creador puede reiniciar el torneo.");
+    if (t.estado !== "FINALIZADO") throw new HttpsError("failed-precondition", "Solo se puede reiniciar un torneo terminado.");
+
+    // Pool mínimo (§37): las colecciones pueden haber cambiado desde el armado original.
+    const n = t.participantes.length;
+    const conteo = await unionPorPosicion(t.participantes);
+    const requerido = { POR: n * 1, DEF: n * 5, MED: n * 5, DEL: n * 3 };
+    for (const pos of ["POR", "DEF", "MED", "DEL"]) {
+        if (conteo[pos] < requerido[pos]) {
+            return {
+                ok: false,
+                validacion: { pos, faltan: requerido[pos] - conteo[pos], conteo, requerido }
+            };
+        }
+    }
+
+    const cierra = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+    await db.runTransaction(async (tx) => {
+        const s = await tx.get(ref);
+        const tt = s.data();
+        if (tt.creadorId !== uid) throw new HttpsError("permission-denied", "Solo el creador puede reiniciar el torneo.");
+        if (tt.estado !== "FINALIZADO") throw new HttpsError("failed-precondition", "El torneo ya cambió de estado.");
+
+        // Libera todos los equipos armados: cada uno vuelve a elegir formación
+        // y jugadores desde cero para la nueva temporada.
+        for (const p of tt.participantes) {
+            tx.delete(db.doc(`torneos/${torneoId}/equipos/${p}`));
+        }
+
+        tx.update(ref, {
+            estado: "ARMADO",
+            ventanaArmadoCierra: cierra,
+            ventanaEntreFechasCierra: FieldValue.delete(),
+            jugadoresReclamados: {},
+            fixture: [],
+            tabla: [],
+            fechaActual: FieldValue.delete(),
+            totalFechas: FieldValue.delete(),
+            premiosOtorgados: FieldValue.delete(),
+            ultimoAvanceEn: ahoraISO()
+        });
+    });
+
+    return { ok: true, ventanaArmadoCierra: cierra };
+});
+
+
+// Borra definitivamente un torneo terminado (documento + equipos armados).
+// Solo el creador, y solo si ya está FINALIZADO (para no borrar por error un
+// torneo en curso).
+export const borrarTorneo = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const torneoId = request.data?.torneoId;
+    if (!torneoId) throw new HttpsError("invalid-argument", "Falta el torneo.");
+
+    const ref = db.doc(`torneos/${torneoId}`);
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError("not-found", "El torneo no existe.");
+    const t = snap.data();
+
+    if (t.creadorId !== uid) throw new HttpsError("permission-denied", "Solo el creador puede borrar el torneo.");
+    if (t.estado !== "FINALIZADO") throw new HttpsError("failed-precondition", "Solo se puede borrar un torneo terminado.");
+
+    const equiposSnap = await db.collection(`torneos/${torneoId}/equipos`).get();
+    const batch = db.batch();
+    for (const d of equiposSnap.docs) batch.delete(d.ref);
+    batch.delete(ref);
+    await batch.commit();
+
+    return { ok: true };
 });
 
 
