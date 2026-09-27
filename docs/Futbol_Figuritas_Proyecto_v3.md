@@ -447,6 +447,8 @@ Antes de cada partido de torneo, el usuario recibe **1 paquete gratis** que abre
 >
 > Si esto no se comunica claramente, el usuario abre un sobre, le sale un jugadorazo, intenta meterlo en la fecha que acaba de jugar y se frustra. El ritual de abrir el sobre antes del partido se mantiene — solo hay que ser explícito sobre para cuándo sirve.
 
+**Dónde se abre en la práctica:** el sobre se puede abrir desde la misma ventana entre fechas donde se edita el equipo (§17.3) — no hace falta ir a la pantalla de Paquetes por separado. La secuencia natural es: jugar la fecha → ver los relatos de a uno (§41.5) → abrir el sobre si salió uno → editar el equipo con lo que trajo, si corresponde → jugar la fecha siguiente.
+
 ### 15.3. Contador de puntos
 
 Cada partido **contra otra persona** suma puntos a un contador acumulativo. **Al llegar a 50 puntos, el usuario recibe un Pack de 3 sobres PREMIUM** (cada uno con un DESTACADO garantizado). El contador se resetea a 0 y vuelve a empezar. Es un objetivo permanente.
@@ -1437,7 +1439,7 @@ En **Cloud Functions**, nunca en el cliente. El resultado se escribe en `torneos
 
 > ✅ **Post-V1.0, a pedido del grupo.** El resultado de la fecha sigue decidiéndose de una sola vez en el servidor (§41.4) — nada de esto cambia quién decide. Lo que cambia es cómo se muestra en el cliente.
 
-Al tocar **JUGAR FECHA**, en vez de saltar directo a la tabla actualizada, se abre una pantalla con la lista de los partidos de esa fecha (ya simulados). Cada uno tiene un botón para ver su relato completo (re-simulado en el cliente con la semilla guardada, igual que el relato de cualquier partido histórico del fixture, §53.1). Se puede ver el relato de cualquier partido de la fecha, no solo el propio — es una liga entre amigos, así que mirar el partido de los demás también importa. Quien prefiera no mirar puede pasar directo a la tabla.
+Al tocar **JUGAR FECHA**, en vez de saltar directo a la tabla actualizada, se abre una pantalla con la lista de los partidos de esa fecha (ya simulados, pero **sin mostrar el marcador todavía**). Cada uno tiene un botón para jugarlo "en vivo": reproduce su relato completo (re-simulado en el cliente con la semilla guardada, igual que el relato de cualquier partido histórico del fixture, §53.1), y el resultado se entera recién en la última línea del relato, que ya lo incluye (§28). Hasta ese momento la lista solo dice "vs". Se puede jugar así cualquier partido de la fecha, no solo el propio — es una liga entre amigos, así que mirar el partido de los demás también importa. Quien prefiera no mirar puede saltear el relato (§Etapa 4) o pasar directo a la tabla sin ver los que falten.
 
 ## 42. Tabla de posiciones
 

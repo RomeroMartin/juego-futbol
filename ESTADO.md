@@ -531,3 +531,67 @@ solo extendida).**
   `functions/juego/` (no aplica a este cambio).
 - Queda pendiente, de la Etapa 10B: amistosos entre usuarios (§32) y abandono
   0-3 (§39).
+
+---
+
+## 12. Post-sección 11 — relato "en vivo" sin spoiler + abrir el sobre entre fechas
+
+Dos ajustes a lo de la sección 11, mismo pedido de sesión. **No toca el
+servidor** (nada nuevo para deployar acá, `firebase deploy` de la sección 11
+ya alcanza).
+
+### Qué se implementó
+
+**1. La pantalla de "fecha jugada" ya no muestra el marcador de entrada.**
+Antes mostraba el resultado de cada partido apenas se jugaba la fecha (el
+servidor ya lo había decidido); ahora la lista dice `vs` hasta que tocás
+"▶ Jugar partido" — el resultado se entera recién en la última línea del
+relato (que siempre lo incluyó, §28: "Final del partido: X - Y"). Saltear el
+relato sigue revelando el resultado al toque (opción ya prevista desde la
+Etapa 4), como corresponde.
+- `js/ui/torneos.js`: `pintarFechaJugada` ahora condiciona el marcador a
+  `info.vistos.has(pt.id)`; el botón cambió de "Ver partido" a "Jugar
+  partido"; el botón de continuar dice "Saltear e ir a la tabla" si quedan
+  partidos sin ver.
+
+**2. Se puede abrir el sobre gratis de la fecha desde la misma ventana entre
+fechas, sin ir a la pantalla de Paquetes.** Antes solo avisaba "recargá para
+verlo". Ahora, si tenés un `BASICO` pendiente, aparece un aviso con botón
+"📦 Abrir sobre" junto al resto de la edición del equipo; al cerrar el
+revelado del paquete, vuelve al mismo torneo (no al home).
+- `js/ui/paquetes.js`: `abrir()` ahora devuelve `true`/`false` según si
+  llegó a abrir el paquete; nuevas exportadas `abrirPaqueteExterno(tipo,
+  onVolver)` y `cerrarPack()` — mismo patrón que `reproducirRelatoExterno` en
+  `partido.js` (un `volverExterno` que, si está seteado, reemplaza el
+  `showScreen("homeScreen")` de siempre al cerrar la pantalla del paquete).
+- `js/main.js`: `closePackButton` y `backFromPack` ahora llaman a
+  `cerrarPack()` en vez de tener `showScreen("homeScreen")` hardcodeado.
+- `js/ui/torneos.js`: `aplicarSobreOptimista(torneoId, fecha)` — como el doc
+  de usuario no tiene listener en vivo (`nube.js` lo lee una sola vez al
+  iniciar sesión), el sobre que el servidor ya acreditó en `avanzarFecha` se
+  refleja localmente en `estado.paquetes.BASICO` con la MISMA condición que
+  usa el servidor (`ECONOMIA.sobrePorPartidoTorneo` +
+  `minParticipantesParaSobre` + que tu equipo haya jugado esa fecha — en N
+  impar hay una fecha libre por ronda). Es una actualización optimista: si
+  algo no cuadra, se corrige solo al recargar. `onAbrirSobreTorneo()` llama a
+  `abrirPaqueteExterno`.
+
+### Decisión técnica a recordar
+- El "sobre pendiente" que ve el botón de Torneos es **estado local
+  optimista**, no una lectura real de Firestore. Si en el futuro se agrega un
+  listener en vivo al doc de usuario (la "Nota de UX conocida" de más
+  arriba), esta lógica se puede simplificar leyendo `estado.paquetes`
+  directo, sin el cálculo de `aplicarSobreOptimista`.
+
+### Cómo testear
+1. Jugar una fecha → en la lista de partidos, todos dicen "vs" (sin
+   resultado) hasta que se juegan de a uno.
+2. Tocar "▶ Jugar partido" en uno → durante el relato no se sabe el
+   resultado; recién en la última línea aparece el marcador final.
+3. Con el equipo en un torneo `EN_CURSO` de tamaño par, jugar una fecha →
+   debe aparecer "🎁 Tenés un sobre nuevo" con botón "Abrir sobre" en la
+   ventana de edición (sin recargar la página).
+4. Tocar "Abrir sobre" → revela las cartas normalmente; al volver, aterriza
+   de nuevo en el mismo torneo (no en el home).
+5. Con un torneo de N impar (alguien tiene fecha libre esa ronda), confirmar
+   que a quien no jugó esa fecha NO le aparece el aviso de sobre nuevo.

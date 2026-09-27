@@ -25,6 +25,7 @@ import {
 import { ECONOMIA } from "../config/economia.js";
 import { simularPartido } from "../core/motor.js";
 import { reproducirRelatoExterno } from "./partido.js";
+import { abrirPaqueteExterno } from "./paquetes.js";
 import { showScreen } from "./navegacion.js";
 import {
     escucharMisTorneos,
@@ -548,6 +549,19 @@ function pintarCompeticion(c, t, uid) {
         }
     }
 
+    // Sobre gratis por fecha jugada (§15.2): si ya tenés uno pendiente, se puede
+    // abrir acá mismo, en la misma ventana en la que se edita el equipo.
+    let bloqueSobre = "";
+    if (!finalizado && soyParticipante) {
+        const tieneSobre = (estado.paquetes?.BASICO || 0) > 0;
+        bloqueSobre = tieneSobre
+            ? `<div class="torneo-aviso torneo-aviso-ok">
+                   🎁 <strong>Tenés un sobre nuevo.</strong> Abrilo antes de armar el equipo para la próxima fecha.
+                   <button id="torneoAbrirSobre" class="secondary-button torneo-abrir-sobre">📦 Abrir sobre</button>
+               </div>`
+            : `<p class="torneo-nota">🎁 Cada fecha que jugás te da 1 sobre gratis.</p>`;
+    }
+
     // Reiniciar / borrar el torneo (solo el creador, solo terminado).
     const accionesFin = (finalizado && esCreador) ? pintarAccionesCreadorFinalizado() : "";
 
@@ -563,7 +577,7 @@ function pintarCompeticion(c, t, uid) {
             ${pintarTabla(t, uid)}
 
             ${bloqueAvance}
-            ${!finalizado ? `<p class="torneo-nota">🎁 Cada fecha que jugás te da 1 sobre gratis (aparece en tus paquetes; recargá para verlo).</p>` : ""}
+            ${bloqueSobre}
 
             ${bloqueEdicion}
             ${accionesFin}
@@ -581,6 +595,8 @@ function pintarCompeticion(c, t, uid) {
         enganchesArmado(t, uid, abierta);
         const btnCopiar = document.getElementById("torneoCopiarIA");
         if (btnCopiar) btnCopiar.addEventListener("click", () => onCopiarEquipoIA(t));
+        const btnSobre = document.getElementById("torneoAbrirSobre");
+        if (btnSobre) btnSobre.addEventListener("click", onAbrirSobreTorneo);
     }
     cont().querySelectorAll("[data-relato]").forEach(b =>
         b.addEventListener("click", () => onVerRelato(t, b.dataset.relato))
@@ -789,8 +805,10 @@ async function onVerRelatoFecha(t, partidoId) {
 
 
 // Pantalla que se abre justo después de JUGAR FECHA: lista los partidos de esa
-// fecha (ya simulados por el servidor) para verlos de a uno con relato, antes
-// de pasar a la tabla actualizada.
+// fecha (ya simulados por el servidor, pero SIN mostrar el marcador todavía)
+// para jugarlos "en vivo" de a uno. El resultado de cada uno se entera recién
+// al final de su relato (que ya viene con el marcador en la última línea,
+// §28) — hasta entonces la lista solo dice "vs".
 function pintarFechaJugada(c, t, info) {
     const f = (t.fixture || []).find(x => x.fecha === info.fecha);
     if (!f) { fechaRecienJugada = null; pintar(); return; }
@@ -798,27 +816,32 @@ function pintarFechaJugada(c, t, info) {
 
     const partidos = f.partidos.map(pt => {
         const visto = info.vistos.has(pt.id);
+        const marcador = visto ? `${pt.golesLocal} - ${pt.golesVisitante}` : "vs";
         return `
             <div class="torneo-partido-wrap">
                 <div class="torneo-partido">
                     <span class="pl">${escapar(nombres[pt.local] || "Jugador")}</span>
-                    <span class="mk jug">${pt.golesLocal} - ${pt.golesVisitante}</span>
+                    <span class="mk ${visto ? "jug" : ""}">${marcador}</span>
                     <span class="pv">${escapar(nombres[pt.visitante] || "Jugador")}</span>
                 </div>
                 <button class="torneo-relato-btn" data-relato-fecha="${pt.id}">
-                    ${visto ? "✓ Ver de nuevo" : "▶ Ver partido"}
+                    ${visto ? "✓ Ver de nuevo" : "▶ Jugar partido"}
                 </button>
             </div>`;
     }).join("");
+
+    const faltan = f.partidos.some(pt => !info.vistos.has(pt.id));
 
     c.innerHTML = `
         <div class="torneo-detalle">
             <span class="eyebrow">Fecha ${info.fecha} jugada</span>
             <h2>${escapar(t.nombre)}</h2>
             ${bannerMensaje()}
-            <p class="torneo-nota">Mirá el relato de los partidos de la fecha, de a uno, o pasá directo a la tabla.</p>
+            <p class="torneo-nota">Jugá los partidos de la fecha de a uno: el resultado se entera al final de cada relato.</p>
             <div class="torneo-fecha actual">${partidos}</div>
-            <button id="torneoContinuarFecha" class="main-button">Continuar →</button>
+            <button id="torneoContinuarFecha" class="main-button">
+                ${faltan ? "Saltear e ir a la tabla →" : "Continuar →"}
+            </button>
         </div>`;
 
     cont().querySelectorAll("[data-relato-fecha]").forEach(b =>
@@ -1115,9 +1138,42 @@ async function onAvanzarFecha(torneoId) {
         } else if (r && r.fechaJugada) {
             // Abre la pantalla de "fecha jugada" para ver los relatos de a uno.
             fechaRecienJugada = { torneoId, fecha: r.fechaJugada, vistos: new Set() };
+            aplicarSobreOptimista(torneoId, r.fechaJugada);
         }
     } catch (e) {
         mensajeArmado = { tipo: "error", texto: e?.message || "No se pudo jugar la fecha." };
+    } finally {
+        ocupado = false;
+        pintar();
+    }
+}
+
+// Actualización optimista del sobre gratis por fecha (§15.2): el servidor ya
+// lo acreditó al jugar la fecha (misma condición que en `avanzarFecha`), pero
+// el doc de usuario no tiene listener en vivo (nube.js lo lee una sola vez al
+// iniciar sesión), así que lo reflejamos acá para poder abrirlo sin recargar.
+function aplicarSobreOptimista(torneoId, fecha) {
+    if (!ECONOMIA.sobrePorPartidoTorneo) return;
+    const t = torneos.find(x => x.id === torneoId);
+    const uid = usuarioActual()?.uid;
+    if (!t || !uid) return;
+    if (t.participantes.length < (ECONOMIA.minParticipantesParaSobre || 4)) return;
+    const f = (t.fixture || []).find(x => x.fecha === fecha);
+    const jugo = f && f.partidos.some(pt => pt.local === uid || pt.visitante === uid);
+    if (!jugo) return;   // fecha libre (N impar): esa fecha no te toca sobre
+    estado.paquetes.BASICO = (estado.paquetes.BASICO || 0) + 1;
+}
+
+// Abre el sobre gratis de la fecha desde la misma ventana de edición del
+// equipo, sin tener que ir a la pantalla de Paquetes. Al cerrar el revelado
+// vuelve acá (mismo patrón que el relato externo).
+async function onAbrirSobreTorneo() {
+    if (ocupado) return;
+    ocupado = true;
+    try {
+        await abrirPaqueteExterno("BASICO", () => { showScreen("torneosScreen"); pintar(); });
+    } catch (e) {
+        mensajeArmado = { tipo: "error", texto: e?.message || "No se pudo abrir el sobre." };
     } finally {
         ocupado = false;
         pintar();
