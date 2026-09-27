@@ -3223,3 +3223,5 @@ main {
 }
 
 .torneo-borrar:hover { background: rgba(220, 70, 70, 0.14); border-color: rgba(220, 70, 70, 0.6); }
+
+.torneo-abrir-sobre { width: 100%; margin: 10px 0 0; }

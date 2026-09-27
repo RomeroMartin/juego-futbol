@@ -21,7 +21,7 @@ import {
 } from "./ui/login.js";
 
 import { showScreen, updateHeader } from "./ui/navegacion.js";
-import { initPaquetes } from "./ui/paquetes.js";
+import { initPaquetes, cerrarPack } from "./ui/paquetes.js";
 import { initTienda } from "./ui/tienda.js";
 import { initFiltrosColeccion } from "./ui/coleccion.js";
 import { renderTeam, initFiltrosEquipo, initTacticaEquipo } from "./ui/equipo.js";
@@ -53,12 +53,10 @@ document.querySelectorAll(".nav-button").forEach(button => {
 });
 
 document.getElementById("closePackButton")
-    .addEventListener("click", () => {
-        showScreen("homeScreen");
-    });
+    .addEventListener("click", cerrarPack);
 
 document.getElementById("backFromPack")
-    .addEventListener("click", () => showScreen("homeScreen"));
+    .addEventListener("click", cerrarPack);
 
 document.getElementById("backFromCollection")
     .addEventListener("click", () => showScreen("homeScreen"));

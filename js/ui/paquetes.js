@@ -32,6 +32,12 @@ let ultimaMeta = null;
 // Evita doble apertura mientras el servidor responde.
 let abriendo = false;
 
+// Adónde volver al cerrar la pantalla de revelado. null = comportamiento
+// normal (vuelve al home). Mismo patrón que `reproducirRelatoExterno` en
+// partido.js: quien abre el paquete desde otra pantalla (ej. la ventana entre
+// fechas de un torneo) pasa su propio callback de vuelta.
+let volverExterno = null;
+
 
 // ==========================================
 // INVENTARIO DE SOBRES (home)
@@ -86,15 +92,19 @@ export function renderInventario() {
 // ABRIR UN PAQUETE
 // ==========================================
 
+// Devuelve `true` si el paquete se abrió (y se pasó a `packScreen`), `false`
+// si no (sin stock, sin posición elegida, ya se estaba abriendo uno, o el
+// servidor lo rechazó). Quien llama externamente (abrirPaqueteExterno) lo usa
+// para saber si de verdad hay que volver por `onVolver` al cerrar el revelado.
 async function abrir(tipo, posicion) {
-    if (abriendo) return;
+    if (abriendo) return false;
     if ((estado.paquetes[tipo] || 0) <= 0) {
         alert("No te quedan paquetes de ese tipo.");
-        return;
+        return false;
     }
     if (tipo === "POSICIONAL" && !POSICIONES.includes(posicion)) {
         alert("Elegí una posición para el paquete posicional.");
-        return;
+        return false;
     }
 
     // 🔴 Etapa 8: el SERVIDOR decide qué te toca (§50.1). El cliente solo pide y
@@ -119,11 +129,31 @@ async function abrir(tipo, posicion) {
         renderPack();
         updateHeader();
         showScreen("packScreen");
+        return true;
     } catch (e) {
         alert(e?.message || "No se pudo abrir el paquete. Probá de nuevo.");
+        return false;
     } finally {
         abriendo = false;
     }
+}
+
+
+// Abre un paquete desde otra pantalla (ej. la ventana entre fechas de un
+// torneo) y, al cerrar el revelado, vuelve a `onVolver` en vez de ir al home.
+export async function abrirPaqueteExterno(tipo, onVolver) {
+    volverExterno = onVolver || null;
+    const abierto = await abrir(tipo, null);
+    if (!abierto) volverExterno = null;   // no se llegó a packScreen: no queda colgado
+}
+
+// Cierra la pantalla de revelado del paquete: vuelve a quien lo abrió
+// (torneo, etc.) o al home si se abrió desde el inventario normal.
+export function cerrarPack() {
+    const fn = volverExterno;
+    volverExterno = null;
+    if (fn) fn();
+    else showScreen("homeScreen");
 }
 
 
