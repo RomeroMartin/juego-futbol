@@ -72,6 +72,12 @@ let mensajeArmado = null;    // aviso visible en pantalla { tipo:'ok'|'error'|'i
 // a la tabla. { torneoId, fecha, vistos: Set<partidoId> } o null.
 let fechaRecienJugada = null;
 
+// torneoId mientras se espera la respuesta de avanzarFecha (o null). Bloquea
+// la pantalla con un loading neutro para que el listener en vivo del torneo
+// no llegue a mostrar el fixture con los resultados ya jugados antes de que
+// se pueda abrir "fecha jugada" con el marcador oculto (ver pintarDetalle).
+let jugandoFecha = null;
+
 const POS_NOMBRE = { POR: "arqueros", DEF: "defensores", MED: "mediocampistas", DEL: "delanteros" };
 const POS_SINGULAR = { POR: "arquero", DEF: "defensor", MED: "mediocampista", DEL: "delantero" };
 const ORDEN_LINEAS = ["DEL", "MED", "DEF", "POR"];
@@ -107,6 +113,7 @@ export function detenerTorneos() {
     torneos = [];
     detalleId = null;
     fechaRecienJugada = null;
+    jugandoFecha = null;
     resetPicker();
 }
 
@@ -205,7 +212,16 @@ function pintarDetalle(c) {
     // Etapa 10A: en curso / finalizado se juega y se ve la liga.
     if (t.estado === "EN_CURSO" || t.estado === "FINALIZADO") {
         asegurarSubEquipo(t.id, uid);
-        if (fechaRecienJugada && fechaRecienJugada.torneoId === t.id) {
+        if (jugandoFecha === t.id) {
+            // Mientras se espera la respuesta de avanzarFecha: el listener en
+            // vivo del torneo puede traer el fixture con los resultados ya
+            // jugados ANTES de que vuelva esta llamada. Si en ese momento se
+            // pintara la competencia normal, se vería el marcador filtrado un
+            // instante. Por eso se bloquea con una pantalla neutra hasta tener
+            // la respuesta propia y poder abrir "fecha jugada" con el marcador
+            // oculto.
+            pintarJugandoFecha(c, t);
+        } else if (fechaRecienJugada && fechaRecienJugada.torneoId === t.id) {
             pintarFechaJugada(c, t, fechaRecienJugada);
         } else {
             pintarCompeticion(c, t, uid);
@@ -804,6 +820,18 @@ async function onVerRelatoFecha(t, partidoId) {
 }
 
 
+// Pantalla neutra mientras se espera la respuesta de avanzarFecha: sin
+// marcadores, sin tabla, sin fixture. Ver `jugandoFecha` más arriba.
+function pintarJugandoFecha(c, t) {
+    c.innerHTML = `
+        <div class="torneo-detalle">
+            <span class="eyebrow">Jugando la fecha…</span>
+            <h2>${escapar(t.nombre)}</h2>
+            <p class="torneo-nota">Esperando el resultado del servidor…</p>
+        </div>`;
+}
+
+
 // Pantalla que se abre justo después de JUGAR FECHA: lista los partidos de esa
 // fecha (ya simulados por el servidor, pero SIN mostrar el marcador todavía)
 // para jugarlos "en vivo" de a uno. El resultado de cada uno se entera recién
@@ -1130,6 +1158,12 @@ async function onAvanzarFecha(torneoId) {
     if (ocupado) return;
     ocupado = true;
     mensajeArmado = null;
+    // Bloquea la pantalla ANTES de esperar la respuesta: el listener en vivo
+    // del torneo puede traer el fixture con los resultados ya jugados antes de
+    // que vuelva avanzarFechaNube, y sin este bloqueo se vería un instante el
+    // marcador filtrado (ver `jugandoFecha` y `pintarDetalle`).
+    jugandoFecha = torneoId;
+    pintar();
     try {
         const r = await avanzarFechaNube(torneoId);
         if (r && r.ok === false) {
@@ -1143,6 +1177,7 @@ async function onAvanzarFecha(torneoId) {
     } catch (e) {
         mensajeArmado = { tipo: "error", texto: e?.message || "No se pudo jugar la fecha." };
     } finally {
+        jugandoFecha = null;
         ocupado = false;
         pintar();
     }
@@ -1250,6 +1285,7 @@ function volverALista() {
     avisoValidacion = "";
     mensajeArmado = null;
     fechaRecienJugada = null;
+    jugandoFecha = null;
     detenerSubEquipo();
     resetPicker();
     pintar();
