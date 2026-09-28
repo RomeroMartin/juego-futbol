@@ -293,6 +293,60 @@ export async function borrarTorneoNube(torneoId) {
 }
 
 
+// ==========================================
+// TORNEOS — abandono (§39)
+// ==========================================
+
+// Abandona el torneo (uno mismo, o el creador marcando a otro participante
+// con uidObjetivo). Solo con el torneo EN_CURSO.
+export async function abandonarTorneoNube(torneoId, uidObjetivo = null) {
+    const res = await llamar("abandonarTorneo")({ torneoId, uidObjetivo });
+    return res.data;
+}
+
+
+// ==========================================
+// AMISTOSOS ENTRE USUARIOS (§32)
+// ==========================================
+
+// Escucha en vivo los desafíos donde participo. `cb(lista)` con el estado
+// actual cada vez que algo cambia. Devuelve la función para desuscribir.
+export function escucharMisDesafios(uid, cb) {
+    const q = query(collection(db, "matches"), where("participantes", "array-contains", uid));
+    return onSnapshot(
+        q,
+        snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+        err => console.error("[nube] Error escuchando mis desafíos:", err)
+    );
+}
+
+// Crea un desafío. Devuelve { matchId, codigoInvitacion }.
+export async function crearDesafioNube() {
+    const res = await llamar("crearDesafio")();
+    return res.data;
+}
+
+// Se une a un desafío por código. Devuelve { matchId }.
+export async function aceptarDesafioNube(codigo) {
+    const res = await llamar("aceptarDesafio")({ codigo });
+    return res.data;
+}
+
+// Confirma el equipo propio (el del modo normal). Cuando confirman los dos,
+// el servidor simula YA el partido. Devuelve { ok, esperando } o
+// { ok, jugado, golesLocal, golesVisitante }.
+export async function confirmarDesafioNube(matchId) {
+    const res = await llamar("confirmarDesafio")({ matchId });
+    return res.data;
+}
+
+// Cancela un desafío que todavía no se jugó.
+export async function cancelarDesafioNube(matchId) {
+    const res = await llamar("cancelarDesafio")({ matchId });
+    return res.data;
+}
+
+
 // Cambia el nombre visible del usuario (perfil + torneos donde participa).
 export async function cambiarNombreNube(nombre) {
     const res = await llamar("cambiarNombre")({ nombre });

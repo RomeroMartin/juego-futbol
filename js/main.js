@@ -27,6 +27,7 @@ import { initFiltrosColeccion } from "./ui/coleccion.js";
 import { renderTeam, initFiltrosEquipo, initTacticaEquipo } from "./ui/equipo.js";
 import { initPartido } from "./ui/partido.js";
 import { initTorneos, detenerTorneos } from "./ui/torneos.js";
+import { initAmistosos, detenerAmistosos } from "./ui/amistosos.js";
 
 
 // ==========================================
@@ -116,6 +117,7 @@ function arrancarJuegoUnaVez() {
     initTacticaEquipo();
     initPartido();
     initTorneos();
+    initAmistosos();
 }
 
 
@@ -140,6 +142,7 @@ observarSesion(async (user) => {
     if (!user) {
         limpiarEstado();
         detenerTorneos();
+        detenerAmistosos();
         document.getElementById("userName").textContent = "";
         mostrarLogin();
         return;

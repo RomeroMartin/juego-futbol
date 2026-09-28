@@ -465,6 +465,13 @@ Cada partido **contra otra persona** suma puntos a un contador acumulativo. **Al
 >
 > **La progresión del juego pasa exclusivamente por jugar contra personas.** Es una decisión deliberada y coherente con el objetivo del proyecto (§2): esto es un juego para jugar con amigos.
 
+> 🛠️ **Fix post-Etapa 10.** `registrarResultadoEconomia` (Fichas + puntos, ya
+> construida desde la Etapa 6) estaba conectada a los partidos vs IA y a los
+> amistosos, pero **no** a `avanzarFecha` — un torneo entero podía jugarse sin
+> que ningún partido individual diera Fichas ni sumara al contador de puntos
+> (solo daban el sobre por fecha, §15.2, y el premio final, §43). Se conectó al
+> agregar amistosos, ya que comparten la misma función.
+
 ### 15.3.1. Entonces, ¿para qué sirve el modo vs IA?
 
 La IA cumple tres funciones, ninguna de progresión:
@@ -1130,7 +1137,38 @@ Además de la IA, dos usuarios pueden jugar un amistoso:
 - **Recién cuando ambos confirmaron** se simula el partido en el servidor.
 - Ambos ven el resultado y el relato al mismo tiempo.
 
-Los amistosos otorgan Fichas pero **no** cuentan para el ranking del torneo.
+Los amistosos otorgan Fichas y puntos (§15.3, §15.4, con el tope de §15.3.2)
+pero **no** cuentan para el ranking de ningún torneo, y **no** dan el sobre
+pre-partido (§15.2, exclusivo de partidos de torneo).
+
+> ✅ **Implementado.** Decisiones tomadas al construirlo, donde el doc no
+> especificaba:
+>
+> - **Solo por código, sin lista de amigos.** No existe ningún sistema de
+>   "amigos" en el juego (ni búsqueda de usuarios: las reglas de Firestore no
+>   dejan leer el perfil de otro salvo el propio). Se reutiliza el mismo
+>   patrón de los torneos: se genera un código de 6 caracteres, se comparte a
+>   mano, el otro lo ingresa. Una lista de amigos derivada (por ejemplo, "gente
+>   con la que ya compartiste un torneo") queda como posible mejora futura, no
+>   bloquea la V1.0.
+> - **"Confirmar el XI" = usar el equipo del modo normal tal cual esté
+>   armado en ese momento**, no un armado separado para el amistoso. Si alguien
+>   quiere cambiar algo antes de confirmar, va al constructor de equipo normal.
+>   Evita duplicar la pantalla de armado sin necesidad (los amistosos no tienen
+>   exclusividad de jugadores, a diferencia de los torneos, así que no hace
+>   falta un equipo aparte).
+> - **Nadie ve el equipo/mentalidad del rival antes de que el partido se
+>   decida** (§19.5): el servidor no escribe el equipo de ninguno de los dos en
+>   el desafío hasta que **los dos** confirmaron; recién ahí lee ambos equipos
+>   frescos, simula y guarda todo junto (equipos + resultado) en la misma
+>   transacción.
+> - **Simulación 100% en el servidor**, igual que las fechas de torneo (§41.4)
+>   y a diferencia de vs IA (que el cliente simula y el servidor re-verifica,
+>   §53.1): acá el cliente nunca decide nada, ni siquiera el marcador
+>   preliminar.
+> - Un desafío se puede **cancelar** en cualquier momento antes de jugarse
+>   (`PENDIENTE` o `CONFIRMANDO`), por cualquiera de los participantes. No
+>   vence solo con el tiempo.
 
 ## 33. Testeo y validación de balance
 
@@ -1216,6 +1254,10 @@ Esto genera:
   // (§17.3, decisión B6 revisada). Se reabre 1h después de cada fecha jugada
   // (o al iniciar el torneo, antes de la fecha 1); null cuando FINALIZADO.
   ventanaEntreFechasCierra: "2026-09-05T21:00:00Z",
+
+  // Abandono (§39): uid → true. Sus partidos restantes se dan 0-3 en
+  // avanzarFecha; sus jugadores NO se liberan.
+  abandonados: { "user_004": true },
 
   fixture: [ /* partidos */ ],
   tabla: [ /* posiciones */ ],
@@ -1380,6 +1422,21 @@ Un jugador vuelve al pool disponible del torneo cuando:
 - el torneo finaliza.
 
 Si un participante abandona con el torneo **en curso**, su equipo queda congelado y sus jugadores **no** se liberan (los partidos ya jugados deben seguir siendo válidos). Sus partidos restantes se dan por perdidos 0-3.
+
+> ✅ **Implementado: el caso EN_CURSO** (el de arriba). El botón "Abandonar"
+> (uno mismo) o "Marcar abandono" (el creador, sobre otro participante) solo
+> está disponible con el torneo `EN_CURSO`. Al marcarse, `avanzarFecha` deja de
+> simular sus partidos restantes: se registran directamente 0-3 en su contra
+> (0-0 si dos abandonados se cruzan), sin semilla real y por lo tanto sin
+> relato para ese partido puntual. El abandonado no recibe más sobres (§15.2)
+> ni Fichas/puntos (§15.3/§15.4) por fechas siguientes; su rival sí cobra la
+> victoria por forfeit como una victoria normal.
+>
+> **No implementado:** el primer punto de la lista (liberar los 11 jugadores
+> de golpe al abandonar **durante el armado**, antes de que el torneo arranque)
+> no tiene un flujo propio — hoy no existe ningún "salir del torneo" durante
+> `ARMADO`. Si hace falta, es una función aparte (`salirDelTorneoEnArmado` o
+> similar) que libere `jugadoresReclamados` del que se va.
 
 ## 40. Formatos de torneo
 
@@ -1735,18 +1792,39 @@ El problema: el día que ajustes un peso de balance (§20), **todos los equipos 
 
 ### 51.2. Documentos de partido con dos dueños
 
-`matches/{matchId}` tiene dos participantes. Para que las reglas de seguridad sean escribibles sin dolor, usar un array:
+`matches/{matchId}` tiene dos participantes. Para que las reglas de seguridad sean escribibles sin dolor, usar un array (mismo campo `participantes` que ya usan los torneos, §35, para reutilizar el mismo patrón de reglas):
 
 ```javascript
-{ jugadores: ["user_001", "user_002"], ... }
+{ participantes: ["user_001", "user_002"], ... }
 ```
 
 Y la regla:
 
 ```javascript
-allow read: if request.auth.uid in resource.data.jugadores;
+allow read: if request.auth.uid in resource.data.participantes;
 allow write: if false;  // solo el Admin SDK escribe
 ```
+
+**Implementado (§32):** el esquema real de `matches/{matchId}` es
+
+```javascript
+{
+  id: "abc123",
+  schemaVersion: 1,
+  tipo: "AMISTOSO",
+  codigoInvitacion: "XKQ7T2",
+  creadorId: "user_001",
+  estado: "CONFIRMANDO",         // PENDIENTE | CONFIRMANDO | JUGADO | CANCELADO
+  participantes: ["user_001", "user_002"],   // [local, visitante]
+  nombres: { user_001: "Fede", user_002: "Nacho" },
+  confirmados: { user_001: true },           // uid → confirmó su equipo
+  equipos: null,                             // { [uid]: {arquero,defensores,medios,delanteros,formacion,mentalidadOfensiva,mentalidadDefensiva} }, recién al JUGARSE
+  resultado: null,                           // { golesLocal, golesVisitante, semilla }, recién al JUGARSE
+  creadoEn, actualizadoEn, jugadoEn
+}
+```
+
+`equipos` y `resultado` quedan en `null` hasta que **los dos** confirmaron: no se escribe nada del equipo de nadie antes de ese momento, para que ninguno vea la formación/mentalidad del otro antes del partido (§19.5).
 
 ## 52. Versionado de datos
 

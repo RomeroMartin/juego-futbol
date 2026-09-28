@@ -16,6 +16,7 @@ import { renderCompetir, renderHistorial } from "./partido.js";
 import { renderInventario } from "./paquetes.js";
 import { renderTienda } from "./tienda.js";
 import { renderTorneos } from "./torneos.js";
+import { renderAmistosos } from "./amistosos.js";
 
 
 // ==========================================
@@ -80,6 +81,10 @@ export function showScreen(screenId) {
 
     if (screenId === "torneosScreen") {
         renderTorneos();
+    }
+
+    if (screenId === "amistososScreen") {
+        renderAmistosos();
     }
 }
 

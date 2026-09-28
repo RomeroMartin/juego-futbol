@@ -1,11 +1,15 @@
-# ESTADO — Torneos reiniciables + jugar fecha de a uno + equipo editable entre fechas 🏆⚽
+# ESTADO — Amistosos (§32) + abandono de torneo (§39) 🤝⚽
 
-> **Última sesión: mejoras post-Etapa 10 pedidas por el grupo** (no es una etapa
-> del plan original). El detalle está en la **sección 11**, al final. Secciones
-> previas: **9** = Etapa 10A, **8** = 9B, **7** = 9A, **1–6** = Etapa 8.
+> **Última sesión: cierra la Etapa 10B.** Amistosos entre usuarios y abandono
+> 0-3, más un fix de Fichas/puntos de torneo que se encontró en el camino. El
+> detalle está en la **sección 13**, al final. Secciones previas: **12** y
+> **11** = mejoras post-Etapa 10 pedidas por el grupo, **9** = Etapa 10A,
+> **8** = 9B, **7** = 9A, **1–6** = Etapa 8.
 >
-> **Sigue pendiente (Etapa 10B, sin tocar en esta sesión):** amistosos entre
-> usuarios (§32) y abandono 0-3 (§39).
+> **El plan de 10 etapas queda 100% cerrado con esta sesión.** Lo único no
+> implementado del doc maestro es una mejora menor de UX señalada en la
+> sección 13 (§39: liberar jugadores al abandonar **durante el armado**, un
+> caso que no tiene flujo propio hoy).
 >
 > ⚠️ **Requiere `firebase deploy`** (hay Cloud Functions nuevas y modificadas)
 > antes de poder testear.
@@ -595,3 +599,132 @@ revelado del paquete, vuelve al mismo torneo (no al home).
    de nuevo en el mismo torneo (no en el home).
 5. Con un torneo de N impar (alguien tiene fecha libre esa ronda), confirmar
    que a quien no jugó esa fecha NO le aparece el aviso de sobre nuevo.
+
+---
+
+## 13. Amistosos (§32) + abandono de torneo (§39) — cierra la Etapa 10B
+
+Última pieza pendiente del plan de 10 etapas original. Se encontró y arregló
+además un gap real: los partidos de torneo no daban Fichas ni puntos
+individuales (§15.3/§15.4), solo el sobre por fecha y el premio final.
+
+### 1. Fix: Fichas + puntos por partido de torneo (§15.3/§15.4)
+
+`registrarResultadoEconomia` (Fichas, puntos, Pack PREMIUM a los 50 puntos)
+está construida desde la Etapa 6 y ya se usaba para partidos vs IA, pero
+`avanzarFecha` nunca la llamaba. Ahora, al jugar una fecha, cada participante
+que jugó de verdad recibe Fichas + puntos según V/E/D (tabla `TORNEO` de
+`ECONOMIA.puntos`), **además** del sobre (§15.2) y el premio final (§43) que
+ya existían. No hizo falta tocar ningún valor de `config/` — todo ya estaba
+definido, solo faltaba conectarlo.
+
+### 2. Abandono de torneo (§39)
+
+- **Cloud Function `abandonarTorneo(torneoId, uidObjetivo?)`**: uno mismo
+  siempre se puede marcar; si `uidObjetivo` es otro participante, solo el
+  creador puede hacerlo (decisión tomada con el usuario: "uno mismo o el
+  creador"). Solo con el torneo `EN_CURSO`. Guarda `torneo.abandonados[uid] =
+  true`; **no libera** sus jugadores reclamados (§39: los partidos ya jugados
+  tienen que seguir siendo válidos).
+- **`avanzarFecha`** ahora, para cada partido de la fecha:
+  - si alguno de los dos ya abandonó, **no simula**: registra 0-3 en contra
+    suyo directamente (0-0 si abandonaron los dos), con `semilla: null` (sin
+    simulación real, sin relato posible para ese partido);
+  - el chequeo de "XI completo" antes de simular ya no exige nada a quien
+    abandonó;
+  - el abandonado no recibe más sobres (§15.2) ni Fichas/puntos por fechas
+    siguientes; su rival sí cobra la victoria por forfeit como una victoria
+    normal (Fichas + puntos + 3 en la tabla).
+- **`exigirEdicionAbierta`** (la que gatea reclamar/liberar/elegir formación)
+  ahora rechaza a un participante ya abandonado.
+- **UI** (`js/ui/torneos.js`): sección "Participantes" en la pantalla de
+  competencia, con botón "Abandonar" (uno mismo) o "Marcar abandono" (el
+  creador, sobre otro), confirmación explícita porque es irreversible. Los
+  partidos por abandono se muestran en el fixture y en "fecha jugada" con
+  "🚪 Abandono" en vez del botón de relato (no hay nada que re-simular).
+
+### 3. Amistosos entre usuarios (§32)
+
+- **Solo por código** (decisión tomada con el usuario): no existe sistema de
+  amigos ni búsqueda de usuarios (las reglas de Firestore solo dejan leer el
+  perfil propio), así que se reusa el mismo patrón de los torneos —
+  `crearDesafio()` genera un código de 6 caracteres, se comparte a mano,
+  `aceptarDesafio(codigo)` lo une.
+- **El equipo es el del modo normal**, tal como esté armado al momento de
+  confirmar (decisión tomada con el usuario): no hay una pantalla de armado
+  separada para el amistoso. `confirmarDesafio(matchId)` lo confirma; cuando
+  **los dos** confirmaron, la misma llamada arma los equipos frescos desde
+  `users/{uid}/teams/actual` + la colección (valida posesión y XI completo,
+  §17.2), simula el partido **100% en el servidor** (como las fechas de
+  torneo, nunca como vs IA) con una semilla determinista, y otorga Fichas +
+  puntos a ambos (`registrarResultadoEconomia(..., "AMISTOSO", ...)`, con el
+  tope de 3 amistosos/día ya implementado desde la Etapa 6).
+- **Nadie ve el equipo/mentalidad del otro antes de que el partido se
+  decida** (§19.5): `equipos` y `resultado` quedan en `null` en el documento
+  del desafío hasta que los dos confirmaron; se escriben los dos a la vez, en
+  la misma transacción que simula.
+- `cancelarDesafio(matchId)`: cualquiera de los participantes puede cancelar
+  mientras no se jugó (no vence solo con el tiempo).
+- **UI nueva** `js/ui/amistosos.js` + pantalla `amistososScreen` + botón de
+  nav "🤝 Amistosos": lista de mis desafíos (en vivo), crear, aceptar por
+  código, y detalle según estado (`PENDIENTE` → código para compartir;
+  `CONFIRMANDO` → confirmar mi equipo, viendo si el rival ya confirmó;
+  `JUGADO` → resultado + botón de relato, re-simulado en el cliente con la
+  semilla guardada, mismo mecanismo que los relatos de torneo).
+
+### Archivos modificados
+- `functions/index.js`: `avanzarFecha` (Fichas/puntos + abandono),
+  `exigirEdicionAbierta` (bloquea a abandonados), nueva `abandonarTorneo`;
+  nuevo bloque completo de Amistosos (`crearDesafio`, `aceptarDesafio`,
+  `confirmarDesafio`, `cancelarDesafio` + helpers `construirEquipoDesdeTeam`,
+  `idsDelEquipo`, `generarCodigoDesafio`).
+- `firestore.rules`: `matches/{matchId}` — lectura para participantes,
+  escritura solo Admin SDK (mismo patrón que `torneos/{torneoId}`).
+- `js/core/nube.js`: `abandonarTorneoNube` + wrappers de amistosos
+  (`escucharMisDesafios`, `crearDesafioNube`, `aceptarDesafioNube`,
+  `confirmarDesafioNube`, `cancelarDesafioNube`).
+- `js/ui/torneos.js`: gestión de participantes/abandono, partidos por
+  forfeit sin relato en fixture y en "fecha jugada".
+- `js/ui/amistosos.js` (nuevo), `js/ui/navegacion.js` (+`amistososScreen`),
+  `js/main.js` (init/detener amistosos), `index.html` (pantalla + nav),
+  `css/estilos.css` (estilos de abandono/forfeit + fix de `min-width` del nav
+  en mobile para que entren 7 botones).
+- `docs/Futbol_Figuritas_Proyecto_v3.md`: §15.3 (nota del fix), §32
+  (decisiones de implementación), §39 (qué se implementó y qué no), §51.2
+  (esquema real de `matches/`).
+
+### Decisiones tomadas con el usuario (antes de codear)
+- Desafiar: **solo por código**, no lista de amigos.
+- Equipo del amistoso: **el del modo normal**, no un armado separado.
+- Abandono: **uno mismo o el creador**, no solo uno mismo.
+- El fix de Fichas/puntos de torneo: **sí, en esta misma tanda**.
+
+### No se tocó
+- `functions/juego/` (config/motor): sin cambios de balance, así que no hubo
+  que resincronizar `js/` ↔ `functions/juego/`.
+- El caso de abandono **durante el armado** (liberar los 11 jugadores de
+  golpe): no tiene flujo propio, ver la nota en §39 del doc maestro.
+
+### Cómo testear (necesita 2 cuentas para amistosos)
+1. `firebase deploy` (sube las funciones nuevas y modificadas).
+2. **Fichas/puntos de torneo:** jugar una fecha de un torneo y confirmar que,
+   además del sobre, suben las Fichas y el contador de puntos (⭐ del header)
+   de quienes jugaron (recargar para verlo, es lectura única).
+3. **Abandono:** con un torneo `EN_CURSO`, un participante toca "Abandonar" →
+   confirma → aparece "Abandonaste este torneo" y desaparece su edición de
+   equipo/sobre. El creador puede "Marcar abandono" sobre otro. Al jugar la
+   siguiente fecha del abandonado, su partido se resuelve 0-3 sin relato
+   ("🚪 Abandono" en el fixture).
+4. **Amistosos:** con cuenta A, Amistosos → Desafiar → aparece el código. Con
+   cuenta B, Aceptar con ese código. Ambas cuentas confirman su equipo (si a
+   alguna le falta el XI completo, avisa antes de dejar confirmar) → al
+   confirmar la segunda, se juega solo y las dos ven el resultado. Ver el
+   relato desde cualquiera de las dos cuentas. Probar también "Cancelar
+   desafío" antes de que ambos confirmen.
+5. **Tope de amistosos:** jugar 4 amistosos seguidos con la misma cuenta en
+   el mismo día → del cuarto en adelante, sigue dando Fichas pero no suma al
+   contador de puntos (§15.3.2).
+
+### Con esto, el plan de 10 etapas queda cerrado
+Todo lo del `Futbol_Figuritas_Plan_de_Etapas.md` original está implementado.
+Lo que quede de acá en más es mejora sobre lo ya construido, no plan pendiente.

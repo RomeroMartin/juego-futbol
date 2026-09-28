@@ -42,7 +42,8 @@ import {
     avanzarFechaNube,
     guardarMentalidadTorneoNube,
     reiniciarTorneoNube,
-    borrarTorneoNube
+    borrarTorneoNube,
+    abandonarTorneoNube
 } from "../core/nube.js";
 
 
@@ -521,7 +522,9 @@ function pintarCompeticion(c, t, uid) {
     const finalizado = t.estado === "FINALIZADO";
     const soyParticipante = t.participantes.includes(uid);
     const totalFechas = t.totalFechas || (t.fixture?.length || "");
-    const abierta = !finalizado && edicionAbiertaCliente(t);
+    const abandonados = t.abandonados || {};
+    const soyAbandonado = !!abandonados[uid];
+    const abierta = !finalizado && !soyAbandonado && edicionAbiertaCliente(t);
 
     // Campeón + premio propio, si el torneo terminó (§43).
     let cabecera = "";
@@ -538,7 +541,7 @@ function pintarCompeticion(c, t, uid) {
 
     // Editar el equipo (formación/jugadores/mentalidad) para la próxima fecha.
     let bloqueEdicion = "";
-    if (!finalizado && soyParticipante && equipoTorneo) {
+    if (!finalizado && soyParticipante && !soyAbandonado && equipoTorneo) {
         const avisoVentana = abierta
             ? `<div class="torneo-aviso torneo-aviso-ok">
                    🟢 <strong>Podés editar tu equipo.</strong> Cierra en ${textoTiempoRestante(t.ventanaEntreFechasCierra)},
@@ -568,7 +571,7 @@ function pintarCompeticion(c, t, uid) {
     // Sobre gratis por fecha jugada (§15.2): si ya tenés uno pendiente, se puede
     // abrir acá mismo, en la misma ventana en la que se edita el equipo.
     let bloqueSobre = "";
-    if (!finalizado && soyParticipante) {
+    if (!finalizado && soyParticipante && !soyAbandonado) {
         const tieneSobre = (estado.paquetes?.BASICO || 0) > 0;
         bloqueSobre = tieneSobre
             ? `<div class="torneo-aviso torneo-aviso-ok">
@@ -581,6 +584,9 @@ function pintarCompeticion(c, t, uid) {
     // Reiniciar / borrar el torneo (solo el creador, solo terminado).
     const accionesFin = (finalizado && esCreador) ? pintarAccionesCreadorFinalizado() : "";
 
+    // Gestión de participantes / abandono (§39): solo mientras está en curso.
+    const gestion = (!finalizado && soyParticipante) ? pintarGestionParticipantes(t, uid) : "";
+
     c.innerHTML = `
         <button class="back-button" id="torneoVolverLista">← Mis torneos</button>
         <div class="torneo-detalle">
@@ -588,6 +594,7 @@ function pintarCompeticion(c, t, uid) {
             <h2>${escapar(t.nombre)}</h2>
             ${cabecera}
             ${bannerMensaje()}
+            ${soyAbandonado ? `<div class="torneo-aviso">🚪 <strong>Abandonaste este torneo.</strong> Tus partidos restantes se dan por perdidos 0-3 (§39).</div>` : ""}
 
             <h3>Tabla de posiciones</h3>
             ${pintarTabla(t, uid)}
@@ -600,6 +607,8 @@ function pintarCompeticion(c, t, uid) {
 
             <h3>Fixture</h3>
             ${pintarFixture(t, uid)}
+
+            ${gestion}
         </div>`;
 
     document.getElementById("torneoVolverLista").addEventListener("click", volverALista);
@@ -613,6 +622,9 @@ function pintarCompeticion(c, t, uid) {
         if (btnCopiar) btnCopiar.addEventListener("click", () => onCopiarEquipoIA(t));
         const btnSobre = document.getElementById("torneoAbrirSobre");
         if (btnSobre) btnSobre.addEventListener("click", onAbrirSobreTorneo);
+        cont().querySelectorAll("[data-abandonar]").forEach(b =>
+            b.addEventListener("click", () => onAbandonar(t.id, b.dataset.abandonar, b.dataset.abandonar === uid))
+        );
     }
     cont().querySelectorAll("[data-relato]").forEach(b =>
         b.addEventListener("click", () => onVerRelato(t, b.dataset.relato))
@@ -623,6 +635,30 @@ function pintarCompeticion(c, t, uid) {
         const btnBorrar = document.getElementById("torneoBorrar");
         if (btnBorrar) btnBorrar.addEventListener("click", () => onBorrarTorneo(t));
     }
+}
+
+
+// Lista de participantes con la acción de abandono (§39): uno mismo siempre
+// se puede marcar; el creador puede marcar a otro para destrabar el torneo.
+function pintarGestionParticipantes(t, uid) {
+    const esCreador = t.creadorId === uid;
+    const abandonados = t.abandonados || {};
+    const filas = t.participantes.map(p => {
+        const yaAband = !!abandonados[p];
+        const soyYo = p === uid;
+        let accion = "";
+        if (!yaAband) {
+            if (soyYo) accion = `<button class="torneo-abandonar-btn" data-abandonar="${p}">Abandonar</button>`;
+            else if (esCreador) accion = `<button class="torneo-abandonar-btn" data-abandonar="${p}">Marcar abandono</button>`;
+        }
+        return `<li class="${yaAband ? "abandonado" : ""}">
+            <span>${escapar(t.nombres?.[p] || "Jugador")}${p === t.creadorId ? " 👑" : ""}${yaAband ? " · abandonó" : ""}</span>
+            ${accion}
+        </li>`;
+    }).join("");
+    return `
+        <h3>Participantes</h3>
+        <ul class="torneo-participantes torneo-participantes-gestion">${filas}</ul>`;
 }
 
 
@@ -665,8 +701,12 @@ function pintarFixture(t, uid) {
         const actual = f.fecha === (t.fechaActual || 1) && t.estado !== "FINALIZADO";
         const partidos = f.partidos.map(pt => {
             const jugado = pt.golesLocal != null;
+            const forfeit = jugado && pt.semilla == null;   // abandono (§39): sin simulación real
             const marcador = jugado ? `${pt.golesLocal} - ${pt.golesVisitante}` : "vs";
             const mio = (pt.local === uid || pt.visitante === uid) ? " mio" : "";
+            const accion = forfeit
+                ? `<span class="torneo-nota torneo-forfeit">🚪 Abandono</span>`
+                : (jugado ? `<button class="torneo-relato-btn" data-relato="${pt.id}">📖 Ver relato</button>` : "");
             return `
                 <div class="torneo-partido-wrap">
                     <div class="torneo-partido${mio}">
@@ -674,7 +714,7 @@ function pintarFixture(t, uid) {
                         <span class="mk ${jugado ? "jug" : ""}">${marcador}</span>
                         <span class="pv">${escapar(nombres[pt.visitante] || "Jugador")}</span>
                     </div>
-                    ${jugado ? `<button class="torneo-relato-btn" data-relato="${pt.id}">📖 Ver relato</button>` : ""}
+                    ${accion}
                 </div>`;
         }).join("");
         return `
@@ -843,8 +883,14 @@ function pintarFechaJugada(c, t, info) {
     const nombres = t.nombres || {};
 
     const partidos = f.partidos.map(pt => {
-        const visto = info.vistos.has(pt.id);
+        const forfeit = pt.semilla == null;   // abandono (§39): sin simulación, sin relato
+        const visto = forfeit || info.vistos.has(pt.id);
         const marcador = visto ? `${pt.golesLocal} - ${pt.golesVisitante}` : "vs";
+        const accion = forfeit
+            ? `<span class="torneo-nota torneo-forfeit">🚪 Abandono</span>`
+            : `<button class="torneo-relato-btn" data-relato-fecha="${pt.id}">
+                   ${visto ? "✓ Ver de nuevo" : "▶ Jugar partido"}
+               </button>`;
         return `
             <div class="torneo-partido-wrap">
                 <div class="torneo-partido">
@@ -852,13 +898,11 @@ function pintarFechaJugada(c, t, info) {
                     <span class="mk ${visto ? "jug" : ""}">${marcador}</span>
                     <span class="pv">${escapar(nombres[pt.visitante] || "Jugador")}</span>
                 </div>
-                <button class="torneo-relato-btn" data-relato-fecha="${pt.id}">
-                    ${visto ? "✓ Ver de nuevo" : "▶ Jugar partido"}
-                </button>
+                ${accion}
             </div>`;
     }).join("");
 
-    const faltan = f.partidos.some(pt => !info.vistos.has(pt.id));
+    const faltan = f.partidos.some(pt => pt.semilla != null && !info.vistos.has(pt.id));
 
     c.innerHTML = `
         <div class="torneo-detalle">
@@ -1272,6 +1316,27 @@ async function onBorrarTorneo(t) {
         pintar();
     } finally {
         ocupado = false;
+    }
+}
+
+// Abandonar el torneo (§39): uno mismo, o el creador marcando a otro
+// participante. Es irreversible (los partidos restantes se dan 0-3), así que
+// pide confirmación explícita.
+async function onAbandonar(torneoId, uidObjetivo, esUnoMismo) {
+    if (ocupado) return;
+    const msg = esUnoMismo
+        ? "Vas a abandonar el torneo. Tus partidos restantes se van a dar por perdidos 0-3 y no se pueden revertir. ¿Seguís?"
+        : "Vas a marcar a ese participante como abandonado. Sus partidos restantes se van a dar por perdidos 0-3 y no se puede revertir. ¿Seguís?";
+    if (!confirm(msg)) return;
+    ocupado = true;
+    mensajeArmado = null;
+    try {
+        await abandonarTorneoNube(torneoId, uidObjetivo);
+    } catch (e) {
+        mensajeArmado = { tipo: "error", texto: e?.message || "No se pudo registrar el abandono." };
+    } finally {
+        ocupado = false;
+        pintar();
     }
 }
 
