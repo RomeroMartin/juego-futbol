@@ -36,6 +36,11 @@ let detalleId = null;       // desafío abierto en la vista de detalle (o null =
 let ocupado = false;        // evita doble submit mientras responde el servidor
 let mensaje = null;         // aviso visible en pantalla { tipo:'ok'|'error'|'info', texto }
 
+// Desafíos JUGADOS cuyo relato ya se vio en esta sesión: hasta entonces, ni la
+// lista ni el detalle muestran el marcador (se entera al final del relato,
+// mismo criterio que "fecha jugada" en torneos.js).
+let vistosAmistoso = new Set();
+
 const ESTADO_ETIQUETA = {
     PENDIENTE: "Esperando rival",
     CONFIRMANDO: "Confirmando equipos",
@@ -67,6 +72,7 @@ export function detenerAmistosos() {
     desafios = [];
     detalleId = null;
     mensaje = null;
+    vistosAmistoso = new Set();
 }
 
 
@@ -93,10 +99,14 @@ function pintarLista(c) {
             const rival = rivalUid ? (m.nombres?.[rivalUid] || "Jugador") : "esperando rival";
             let extra = "";
             if (m.estado === "JUGADO" && m.resultado) {
-                const soyLocal = m.participantes[0] === uid;
-                const gp = soyLocal ? m.resultado.golesLocal : m.resultado.golesVisitante;
-                const gr = soyLocal ? m.resultado.golesVisitante : m.resultado.golesLocal;
-                extra = ` · ${gp}-${gr}`;
+                if (vistosAmistoso.has(m.id)) {
+                    const soyLocal = m.participantes[0] === uid;
+                    const gp = soyLocal ? m.resultado.golesLocal : m.resultado.golesVisitante;
+                    const gr = soyLocal ? m.resultado.golesVisitante : m.resultado.golesLocal;
+                    extra = ` · ${gp}-${gr}`;
+                } else {
+                    extra = " · sin ver";
+                }
             }
             return `
                 <button class="torneo-item" data-abrir-desafio="${m.id}">
@@ -224,9 +234,28 @@ function pintarConfirmando(c, m, uid) {
 
 // Estado JUGADO: resultado + relato (re-simulado con la semilla guardada).
 function pintarJugado(c, m, uid) {
-    const soyLocal = m.participantes[0] === uid;
     const rivalUid = m.participantes.find(p => p !== uid);
     const rival = m.nombres?.[rivalUid] || "Rival";
+    const visto = vistosAmistoso.has(m.id);
+
+    // Sin ver todavía: nada de marcador ni de "ganaste/perdiste". El resultado
+    // se entera recién al final del relato (§28), como en la fecha de torneo.
+    if (!visto) {
+        c.innerHTML = `
+            <button class="back-button" id="amistosoVolver">← Mis amistosos</button>
+            <div class="torneo-detalle">
+                <span class="eyebrow">Jugado</span>
+                <h2>Vos vs ${escapar(rival)}</h2>
+                ${bannerMensaje()}
+                <p class="torneo-nota">El partido ya se jugó. Mirá el relato para enterarte del resultado.</p>
+                <button id="amistosoVerRelato" class="main-button">▶ Jugar partido</button>
+            </div>`;
+        document.getElementById("amistosoVolver").addEventListener("click", volverALista);
+        document.getElementById("amistosoVerRelato").addEventListener("click", () => onVerRelato(m));
+        return;
+    }
+
+    const soyLocal = m.participantes[0] === uid;
     const gp = soyLocal ? m.resultado.golesLocal : m.resultado.golesVisitante;
     const gr = soyLocal ? m.resultado.golesVisitante : m.resultado.golesLocal;
     const texto = gp > gr ? "Ganaste" : gp < gr ? "Perdiste" : "Empataste";
@@ -241,7 +270,7 @@ function pintarJugado(c, m, uid) {
                 <strong>${texto}.</strong> Sumaste Fichas y puntos por este partido.
                 <em>(recargá para ver tu saldo actualizado)</em>
             </div>
-            <button id="amistosoVerRelato" class="main-button">📖 Ver relato</button>
+            <button id="amistosoVerRelato" class="main-button">✓ Ver de nuevo</button>
         </div>`;
 
     document.getElementById("amistosoVolver").addEventListener("click", volverALista);
@@ -315,6 +344,7 @@ async function onVerRelato(m) {
     try {
         const registro = construirRegistroRelatoAmistoso(m);
         mensaje = null;
+        vistosAmistoso.add(m.id);
         reproducirRelatoExterno(registro, () => { showScreen("amistososScreen"); pintar(); });
     } catch (e) {
         mensaje = { tipo: "error", texto: e?.message || "No se pudo abrir el relato." };
