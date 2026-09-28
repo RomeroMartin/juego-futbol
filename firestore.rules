@@ -78,9 +78,16 @@ service cloud.firestore {
       }
     }
 
-    // Amistosos entre usuarios (Etapa 10): todavía no se usan.
-    match /matches/{documento=**} {
-      allow read, write: if false;
+    // Amistosos entre usuarios (§32). El cliente LEE un desafío solo si es
+    // participante (para verlo en vivo mientras se arma y se confirma), y
+    // NUNCA lo escribe: crear, unirse, confirmar y simular pasan por Cloud
+    // Functions (Admin SDK), que ignoran estas reglas. Antes de que alguien
+    // acepte el desafío (creadorId == uid, participantes == [uid]), el propio
+    // creador también puede leerlo por esta misma regla.
+    match /matches/{matchId} {
+      allow read: if request.auth != null
+                  && request.auth.uid in resource.data.participantes;
+      allow write: if false;
     }
   }
 }

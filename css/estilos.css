@@ -1752,6 +1752,8 @@ main {
 
         flex: 1;
 
+        min-width: 0;
+
     }
 
 }
@@ -3225,3 +3227,29 @@ main {
 .torneo-borrar:hover { background: rgba(220, 70, 70, 0.14); border-color: rgba(220, 70, 70, 0.6); }
 
 .torneo-abrir-sobre { width: 100%; margin: 10px 0 0; }
+
+.torneo-forfeit { font-style: italic; }
+
+.torneo-participantes-gestion li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.torneo-participantes-gestion li.abandonado {
+    opacity: 0.6;
+}
+
+.torneo-abandonar-btn {
+    background: transparent;
+    border: 1px solid rgba(220, 70, 70, 0.45);
+    color: #e05a5a;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.torneo-abandonar-btn:hover { background: rgba(220, 70, 70, 0.14); }

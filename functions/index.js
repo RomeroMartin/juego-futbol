@@ -553,6 +553,7 @@ function ventanaTorneoAbierta(t) {
 function exigirEdicionAbierta(t, uid) {
     if (!t) throw new HttpsError("not-found", "El torneo no existe.");
     if (!t.participantes.includes(uid)) throw new HttpsError("permission-denied", "No sos participante de este torneo.");
+    if ((t.abandonados || {})[uid]) throw new HttpsError("failed-precondition", "Ya abandonaste este torneo (§39).");
     if (!["ARMADO", "EN_CURSO"].includes(t.estado)) {
         throw new HttpsError("failed-precondition", "Este torneo no admite cambios de equipo.");
     }
@@ -1026,18 +1027,37 @@ export const avanzarFecha = onCall(async (request) => {
         const equipos = {};
         for (const p of uids) equipos[p] = (await t.get(db.doc(`torneos/${torneoId}/equipos/${p}`))).data();
 
+        // Abandono (§39): un participante abandonado no juega más partidos
+        // reales — los pierde 0-3 sin simular. No hace falta que tenga el XI
+        // completo (por eso se excluye del chequeo de abajo).
+        const abandonados = torneo.abandonados || {};
+
         // Como el equipo se puede editar entre fechas, alguien puede haber
         // liberado un jugador y no haberlo reemplazado todavía: verificar XI
-        // completo antes de simular (mismo criterio que iniciarTorneo).
+        // completo antes de simular (mismo criterio que iniciarTorneo), salvo
+        // en quien ya abandonó (§39).
         const incompletos = [];
         for (const p of uids) {
+            if (abandonados[p]) continue;
             if (!xiCompleto(equipos[p])) incompletos.push(torneo.nombres?.[p] || "Jugador");
         }
         if (incompletos.length > 0) return { ok: false, incompletos };
 
-        // Simular en el servidor (§41.4) los partidos aún sin jugar.
+        // Simular en el servidor (§41.4) los partidos aún sin jugar. Si alguno
+        // de los dos abandonó, no se simula: se registra 0-3 en contra suyo
+        // (§39); si abandonaron los dos, 0-0. Sin semilla real (sin relato).
         for (const pt of jornada.partidos) {
             if (pt.golesLocal != null) continue;
+
+            const localAband = !!abandonados[pt.local];
+            const visAband = !!abandonados[pt.visitante];
+            if (localAband || visAband) {
+                pt.golesLocal = localAband ? 0 : 3;
+                pt.golesVisitante = visAband ? 0 : 3;
+                pt.semilla = null;
+                continue;
+            }
+
             const semilla = semillaPartido(torneoId, pt.id);
             const r = simularPartido(
                 equipoMotorDesdeDoc(equipos[pt.local], pt.local),
@@ -1053,9 +1073,28 @@ export const avanzarFecha = onCall(async (request) => {
         const siguiente = fecha + 1;
         const finalizado = siguiente > fixture.length;
 
+        // Resultado (V/E/D) de cada uno que jugó de verdad esta fecha, para
+        // Fichas + puntos por partido (§15.3/§15.4). Un abandonado no suma
+        // nada (ni falta ni gana); su rival sí cobra la victoria por forfeit.
+        const resultadoDe = {};
+        for (const pt of jornada.partidos) {
+            if (pt.golesLocal == null) continue;
+            const localAband = !!abandonados[pt.local];
+            const visAband = !!abandonados[pt.visitante];
+            if (localAband && visAband) continue;
+            if (localAband) { resultadoDe[pt.visitante] = "V"; continue; }
+            if (visAband) { resultadoDe[pt.local] = "V"; continue; }
+            if (pt.golesLocal > pt.golesVisitante) { resultadoDe[pt.local] = "V"; resultadoDe[pt.visitante] = "D"; }
+            else if (pt.golesLocal < pt.golesVisitante) { resultadoDe[pt.local] = "D"; resultadoDe[pt.visitante] = "V"; }
+            else { resultadoDe[pt.local] = "E"; resultadoDe[pt.visitante] = "E"; }
+        }
+
         // Acreditaciones de la fecha (todas las lecturas ANTES de escribir):
-        //  - Sobre gratis por cada partido de torneo (§15.2): +1 BÁSICO a cada uno
-        //    que jugó esta fecha, si el torneo tiene el mínimo de participantes.
+        //  - Fichas + puntos por partido de torneo (§15.3/§15.4): a quien jugó
+        //    de verdad esta fecha (activo o ganador por forfeit).
+        //  - Sobre gratis por cada partido de torneo (§15.2): +1 BÁSICO a cada
+        //    activo que jugó esta fecha, si el torneo tiene el mínimo de
+        //    participantes. Un abandonado no recibe más sobres.
         //  - Premios al finalizar (§43): Fichas por puesto.
         const darSobre = ECONOMIA.sobrePorPartidoTorneo
             && torneo.participantes.length >= (ECONOMIA.minParticipantesParaSobre || 4);
@@ -1063,9 +1102,8 @@ export const avanzarFecha = onCall(async (request) => {
             ? premiosPorTabla(tabla, torneo.participantes.length)
             : null;
 
-        // Usuarios cuyo doc hay que tocar: los que jugaron (sobre) ∪ todos (premios).
-        const aTocar = new Set();
-        if (darSobre) for (const p of uids) aTocar.add(p);
+        // Usuarios cuyo doc hay que tocar: los que jugaron ∪ todos (premios).
+        const aTocar = new Set(uids);
         if (premios) for (const p of torneo.participantes) aTocar.add(p);
 
         const snaps = {};
@@ -1076,8 +1114,16 @@ export const avanzarFecha = onCall(async (request) => {
             const data = snap.data();
             const usuario = reconstruirUsuario(data);
             const paquetes = { ...inventarioNuevo(), ...(data.paquetes || {}) };
-            if (darSobre && uids.has(p)) paquetes.BASICO = (paquetes.BASICO || 0) + 1;
+
+            if (resultadoDe[p]) {
+                const eco = registrarResultadoEconomia(usuario, "TORNEO", resultadoDe[p]);
+                if (eco.packsPremiumOtorgados > 0) {
+                    paquetes.PREMIUM = (paquetes.PREMIUM || 0) + eco.packsPremiumOtorgados;
+                }
+            }
+            if (darSobre && uids.has(p) && !abandonados[p]) paquetes.BASICO = (paquetes.BASICO || 0) + 1;
             if (premios) usuario.monedas.fichas = (usuario.monedas.fichas || 0) + (premios[p] || 0);
+
             t.set(db.doc(`users/${p}`), {
                 usuario: extraerUsuario(usuario),
                 paquetes,
@@ -1131,6 +1177,46 @@ export const guardarMentalidadTorneo = onCall(async (request) => {
         if (!eq) throw new HttpsError("failed-precondition", "Todavía no armaste tu equipo.");
 
         t.set(equipoRef, { mentalidadOfensiva, mentalidadDefensiva, actualizadoEn: ahoraISO() }, { merge: true });
+        return { ok: true };
+    });
+});
+
+
+// ==========================================
+// TORNEOS — abandono (§39)
+// ==========================================
+//
+// Si un participante abandona con el torneo EN_CURSO, su equipo queda
+// congelado y sus jugadores NO se liberan (los partidos ya jugados siguen
+// siendo válidos). Sus partidos restantes se dan por perdidos 0-3 (ver
+// avanzarFecha). Uno mismo se puede marcar siempre; el creador puede marcar a
+// otro participante para destrabar el torneo si desapareció sin avisar.
+
+export const abandonarTorneo = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const torneoId = request.data?.torneoId;
+    const objetivo = request.data?.uidObjetivo || uid;
+    if (!torneoId) throw new HttpsError("invalid-argument", "Falta el torneo.");
+
+    const ref = db.doc(`torneos/${torneoId}`);
+
+    return db.runTransaction(async (t) => {
+        const torneo = (await t.get(ref)).data();
+        if (!torneo) throw new HttpsError("not-found", "El torneo no existe.");
+        if (!torneo.participantes.includes(objetivo)) {
+            throw new HttpsError("invalid-argument", "Ese usuario no es participante del torneo.");
+        }
+        if (objetivo !== uid && torneo.creadorId !== uid) {
+            throw new HttpsError("permission-denied", "Solo vos mismo o el creador pueden marcar el abandono.");
+        }
+        if (torneo.estado !== "EN_CURSO") {
+            throw new HttpsError("failed-precondition", "Solo se puede abandonar un torneo en curso.");
+        }
+        if ((torneo.abandonados || {})[objetivo]) {
+            return { ok: true, yaAbandonado: true };
+        }
+
+        t.update(ref, { [`abandonados.${objetivo}`]: true, actualizadoEn: ahoraISO() });
         return { ok: true };
     });
 });
@@ -1228,6 +1314,231 @@ export const borrarTorneo = onCall(async (request) => {
     await batch.commit();
 
     return { ok: true };
+});
+
+
+// ==========================================
+// AMISTOSOS ENTRE USUARIOS (§32)
+// ==========================================
+//
+// A desafía a B por código (mismo patrón que un torneo: se genera un código,
+// se comparte a mano, el otro lo ingresa). Recién cuando LOS DOS confirman su
+// equipo (el del modo normal, tal como esté armado en ese momento) se simula
+// el partido, 100% en el servidor — no hay re-verificación de semilla como en
+// vs IA, porque acá el cliente nunca decide nada. Dan Fichas y puntos
+// (§15.3/§15.4), con el tope diario de amistosos (§15.3.2) ya implementado en
+// registrarResultadoEconomia desde la Etapa 6. NO dan sobre (§15.2, exclusivo
+// de partidos de torneo) y no cuentan para ningún torneo.
+
+// Código único para un desafío (mismo alfabeto que los torneos, sin ambigüedad).
+async function generarCodigoDesafio() {
+    for (let i = 0; i < 8; i++) {
+        const c = generarCodigo();
+        const ex = await db.collection("matches").where("codigoInvitacion", "==", c).limit(1).get();
+        if (ex.empty) return c;
+    }
+    throw new HttpsError("internal", "No se pudo generar un código. Probá de nuevo.");
+}
+
+// Arma el equipo del modo normal de un usuario (formación + XI + mentalidad,
+// tal como esté guardado en users/{uid}/teams/actual) para el motor, validando
+// que sea dueño de cada jugador y que el XI esté completo (§17.2). `null` si
+// no se puede armar.
+function construirEquipoDesdeTeam(teamDoc, idsPoseidos, uid) {
+    if (!teamDoc || !teamDoc.formacion) return null;
+    const grupos = { POR: null, DEF: [], MED: [], DEL: [] };
+    for (const { slot, position } of slotsDeFormacion(teamDoc.formacion)) {
+        const pid = teamDoc.team?.[slot];
+        if (pid == null || !idsPoseidos.has(pid)) return null;
+        const pl = CATALOGO.get(pid);
+        if (!pl) return null;
+        if (position === "POR") grupos.POR = pl; else grupos[position].push(pl);
+    }
+    if (!grupos.POR) return null;
+    return {
+        id: uid,
+        arquero: grupos.POR,
+        defensores: grupos.DEF,
+        medios: grupos.MED,
+        delanteros: grupos.DEL,
+        formacion: teamDoc.formacion,
+        mentalidadOfensiva: teamDoc.mentalidadOfensiva || MENTALIDAD_OF_DEFAULT,
+        mentalidadDefensiva: teamDoc.mentalidadDefensiva || MENTALIDAD_DEF_DEFAULT
+    };
+}
+
+// Solo ids (sin los objetos de jugador) para guardar en el desafío: el cliente
+// rehidrata desde su catálogo local al pedir el relato (§54).
+function idsDelEquipo(eq) {
+    return {
+        arquero: eq.arquero.id,
+        defensores: eq.defensores.map(j => j.id),
+        medios: eq.medios.map(j => j.id),
+        delanteros: eq.delanteros.map(j => j.id),
+        formacion: eq.formacion,
+        mentalidadOfensiva: eq.mentalidadOfensiva,
+        mentalidadDefensiva: eq.mentalidadDefensiva
+    };
+}
+
+// Crea un desafío en estado PENDIENTE, con código para compartir.
+export const crearDesafio = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const codigo = await generarCodigoDesafio();
+
+    const ref = db.collection("matches").doc();
+    await ref.set({
+        schemaVersion: 1,
+        tipo: "AMISTOSO",
+        codigoInvitacion: codigo,
+        creadorId: uid,
+        estado: "PENDIENTE",   // PENDIENTE | CONFIRMANDO | JUGADO | CANCELADO
+        participantes: [uid],
+        nombres: { [uid]: nombreDe(request.auth.token) },
+        confirmados: {},
+        equipos: null,
+        resultado: null,
+        creadoEn: ahoraISO(),
+        actualizadoEn: ahoraISO()
+    });
+
+    return { matchId: ref.id, codigoInvitacion: codigo };
+});
+
+// El desafiado se une por código: pasa a CONFIRMANDO, donde cada uno tiene que
+// confirmar su equipo (confirmarDesafio).
+export const aceptarDesafio = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const codigo = (request.data?.codigo || "").trim().toUpperCase();
+    if (!codigo) throw new HttpsError("invalid-argument", "Escribí el código del desafío.");
+
+    const q = await db.collection("matches").where("codigoInvitacion", "==", codigo).limit(1).get();
+    if (q.empty) throw new HttpsError("not-found", "No existe un desafío con ese código.");
+    const ref = q.docs[0].ref;
+
+    return db.runTransaction(async (tx) => {
+        const s = await tx.get(ref);
+        const m = s.data();
+        if (m.creadorId === uid) throw new HttpsError("failed-precondition", "No te podés desafiar a vos mismo.");
+        if (m.participantes.includes(uid)) return { matchId: ref.id, yaUnido: true };
+        if (m.estado !== "PENDIENTE") throw new HttpsError("failed-precondition", "Ese desafío ya no admite rivales.");
+
+        tx.update(ref, {
+            participantes: [...m.participantes, uid],
+            [`nombres.${uid}`]: nombreDe(request.auth.token),
+            estado: "CONFIRMANDO",
+            actualizadoEn: ahoraISO()
+        });
+        return { matchId: ref.id };
+    });
+});
+
+// Cada participante confirma que usa su equipo del modo normal, tal como esté
+// armado en este instante. Cuando LOS DOS confirmaron, la misma llamada arma
+// los equipos frescos del servidor, simula el partido (§32) y otorga Fichas +
+// puntos (§15.3/§15.4, con el tope de amistosos §15.3.2). Ninguno de los dos
+// ve el equipo del otro antes de este momento (§19.5): no se escribe nada de
+// un equipo hasta que el partido ya está decidido.
+export const confirmarDesafio = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const matchId = request.data?.matchId;
+    if (!matchId) throw new HttpsError("invalid-argument", "Falta el desafío.");
+
+    const ref = db.doc(`matches/${matchId}`);
+
+    return db.runTransaction(async (t) => {
+        const snap = await t.get(ref);
+        const m = snap.data();
+        if (!m) throw new HttpsError("not-found", "El desafío no existe.");
+        if (!m.participantes.includes(uid)) throw new HttpsError("permission-denied", "No sos parte de este desafío.");
+        if (m.estado !== "CONFIRMANDO") throw new HttpsError("failed-precondition", "Este desafío no está esperando confirmación.");
+
+        const confirmados = { ...(m.confirmados || {}), [uid]: true };
+        if (m.confirmados?.[uid]) return { ok: true, esperando: m.participantes.some(p => !confirmados[p]) };
+
+        const faltan = m.participantes.filter(p => !confirmados[p]);
+        if (faltan.length > 0) {
+            t.update(ref, { confirmados, actualizadoEn: ahoraISO() });
+            return { ok: true, esperando: true };
+        }
+
+        // Los dos confirmaron: TODAS las lecturas antes de cualquier escritura.
+        const [localUid, visitanteUid] = m.participantes;
+        const teamSnaps = {}, colSnaps = {}, userSnaps = {};
+        for (const p of m.participantes) {
+            teamSnaps[p] = await t.get(db.doc(`users/${p}/teams/actual`));
+            colSnaps[p] = await t.get(db.collection(`users/${p}/collection`));
+            userSnaps[p] = await t.get(db.doc(`users/${p}`));
+        }
+
+        const equipos = {};
+        const incompletos = [];
+        for (const p of m.participantes) {
+            const poseidos = new Set(colSnaps[p].docs.map(d => d.data().playerId));
+            const eq = construirEquipoDesdeTeam(teamSnaps[p].data(), poseidos, p);
+            equipos[p] = eq;
+            if (!eq) incompletos.push(m.nombres?.[p] || "Jugador");
+        }
+        if (incompletos.length > 0) {
+            throw new HttpsError("failed-precondition",
+                "No se pudo jugar: " + incompletos.join(", ") + " no tiene un equipo completo armado (§17.2).");
+        }
+
+        const semilla = semillaPartido(matchId, "amistoso");
+        const r = simularPartido(equipos[localUid], equipos[visitanteUid], semilla);
+
+        const resultadoDe = {};
+        if (r.golesA > r.golesB) { resultadoDe[localUid] = "V"; resultadoDe[visitanteUid] = "D"; }
+        else if (r.golesA < r.golesB) { resultadoDe[localUid] = "D"; resultadoDe[visitanteUid] = "V"; }
+        else { resultadoDe[localUid] = "E"; resultadoDe[visitanteUid] = "E"; }
+
+        for (const p of m.participantes) {
+            const data = userSnaps[p].data();
+            if (!data) continue;
+            const usuario = reconstruirUsuario(data);
+            const paquetes = { ...inventarioNuevo(), ...(data.paquetes || {}) };
+            const eco = registrarResultadoEconomia(usuario, "AMISTOSO", resultadoDe[p]);
+            if (eco.packsPremiumOtorgados > 0) {
+                paquetes.PREMIUM = (paquetes.PREMIUM || 0) + eco.packsPremiumOtorgados;
+            }
+            t.set(db.doc(`users/${p}`), {
+                usuario: extraerUsuario(usuario),
+                paquetes,
+                actualizadoEn: ahoraISO()
+            }, { merge: true });
+        }
+
+        t.update(ref, {
+            estado: "JUGADO",
+            confirmados,
+            equipos: { [localUid]: idsDelEquipo(equipos[localUid]), [visitanteUid]: idsDelEquipo(equipos[visitanteUid]) },
+            resultado: { golesLocal: r.golesA, golesVisitante: r.golesB, semilla },
+            jugadoEn: ahoraISO(),
+            actualizadoEn: ahoraISO()
+        });
+
+        return { ok: true, jugado: true, golesLocal: r.golesA, golesVisitante: r.golesB };
+    });
+});
+
+// Cancela un desafío que todavía no se jugó (creado sin rival, o esperando
+// confirmación). Cualquiera de los participantes lo puede cancelar.
+export const cancelarDesafio = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const matchId = request.data?.matchId;
+    if (!matchId) throw new HttpsError("invalid-argument", "Falta el desafío.");
+
+    const ref = db.doc(`matches/${matchId}`);
+    return db.runTransaction(async (t) => {
+        const m = (await t.get(ref)).data();
+        if (!m) throw new HttpsError("not-found", "El desafío no existe.");
+        if (!m.participantes.includes(uid)) throw new HttpsError("permission-denied", "No sos parte de este desafío.");
+        if (!["PENDIENTE", "CONFIRMANDO"].includes(m.estado)) {
+            throw new HttpsError("failed-precondition", "Ese desafío ya se jugó o ya está cancelado.");
+        }
+        t.update(ref, { estado: "CANCELADO", actualizadoEn: ahoraISO() });
+        return { ok: true };
+    });
 });
 
 
