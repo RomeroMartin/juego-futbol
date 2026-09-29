@@ -8,11 +8,12 @@
 // partido.
 //
 // Placeholders:
-//   {GOLEADOR}  el autor del gol
+//   {GOLEADOR}  el autor del gol (o el pateador, en un penal)
 //   {ARQUERO}   el arquero que ataja (equipo que defiende)
 //   {ATACANTE}  un atacante del equipo que ataca
 //   {DEFENSOR}  un defensor del equipo que defiende
 //   {EQUIPO}    el nombre del equipo que ataca
+//   {JUGADOR}   el jugador amonestado/expulsado (tarjetas, Grupo E)
 
 export const PLANTILLAS = {
 
@@ -45,6 +46,51 @@ export const PLANTILLAS = {
         "{DEFENSOR} rechazó firme antes de que {ATACANTE} rematara.",
         "Recuperó {DEFENSOR}: se le acabó el ataque a {ATACANTE}.",
         "Cerró bien {DEFENSOR} y le quitó el balón a {ATACANTE}."
+    ],
+
+    // Penales (Grupo E, post-Etapa 10). Reusan {GOLEADOR}/{ARQUERO}/{ATACANTE}
+    // de arriba: es el mismo evento GOL/ATAJADA, marcado con `esPenal`.
+    PENAL_GOL: [
+        "¡Penal! Y {GOLEADOR} no perdona: la clavó en el ángulo.",
+        "{GOLEADOR} se para ante la pelota... ¡y convierte el penal!",
+        "¡Gol de penal de {GOLEADOR}! La mandó a un lado, imposible para el arquero.",
+        "Sin nervios: {GOLEADOR} cambió el penal por gol para {EQUIPO}.",
+        "¡Lo cobró {GOLEADOR} y no falló! Penal convertido.",
+        "{GOLEADOR} engañó al arquero desde los doce pasos. ¡Gol de penal!"
+    ],
+    PENAL_ATAJADO: [
+        "¡Penal atajado! {ARQUERO} le adivinó el palo a {ATACANTE}.",
+        "¡{ARQUERO} se la tapó! {ATACANTE} había cobrado el penal.",
+        "Increíble: {ARQUERO} contuvo el remate de penal de {ATACANTE}.",
+        "{ATACANTE} pateó el penal, pero {ARQUERO} voló y la sacó.",
+        "¡Qué atajada la de {ARQUERO}! Le ahogó el grito a {ATACANTE} desde los doce pasos.",
+        "{ATACANTE} se la envió al medio y {ARQUERO} no se movió: penal atajado."
+    ],
+
+    // Tarjetas (Grupo E, post-Etapa 10).
+    TARJETA_AMARILLA: [
+        "Tarjeta amarilla para {JUGADOR}.",
+        "El árbitro amonesta a {JUGADOR}.",
+        "Amarilla para {JUGADOR}: una falta de más.",
+        "{JUGADOR} se pierde en el reclamo y se lleva la amarilla.",
+        "Le sacan tarjeta amarilla a {JUGADOR} por la dura entrada.",
+        "Advertencia para {JUGADOR}: tarjeta amarilla."
+    ],
+    TARJETA_ROJA_DOBLE: [
+        "¡Segunda amarilla para {JUGADOR}! Se va expulsado.",
+        "{JUGADOR} ve la segunda amarilla y el árbitro lo manda a las duchas.",
+        "¡Doble amarilla y roja para {JUGADOR}! Su equipo se queda con uno menos.",
+        "No puede creerlo: {JUGADOR} se va expulsado por doble amonestación.",
+        "{JUGADOR} repite la falta y el árbitro no duda: segunda amarilla, afuera.",
+        "Roja por acumulación para {JUGADOR}. Quedan con uno menos."
+    ],
+    TARJETA_ROJA_DIRECTA: [
+        "¡Roja directa para {JUGADOR}! Una entrada durísima.",
+        "El árbitro no duda: tarjeta roja directa para {JUGADOR}.",
+        "¡Expulsado {JUGADOR}! El árbitro le muestra la roja sin dudar.",
+        "Falta violenta de {JUGADOR}: roja directa y a las duchas.",
+        "{JUGADOR} se va expulsado en una acción muy dura.",
+        "Roja directa para {JUGADOR}. Su equipo termina con uno menos."
     ]
 };
 

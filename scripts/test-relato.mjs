@@ -36,7 +36,11 @@ const nombresDe = ids => new Set([ids.arquero, ...ids.defensores, ...ids.medios,
 
 // 1) ≥6 plantillas por tipo
 console.log("\n1) PLANTILLAS POR TIPO");
-for (const tipo of ["GOL", "ATAJADA", "ATAQUE_CORTADO"]) {
+for (const tipo of [
+    "GOL", "ATAJADA", "ATAQUE_CORTADO",
+    "PENAL_GOL", "PENAL_ATAJADO",
+    "TARJETA_AMARILLA", "TARJETA_ROJA_DOBLE", "TARJETA_ROJA_DIRECTA"
+]) {
     ok(PLANTILLAS[tipo].length >= 6, `${tipo}: ${PLANTILLAS[tipo].length} plantillas (≥6)`);
 }
 
@@ -72,6 +76,45 @@ ok(nombresOK, "Cada gol nombra a su autor real, que pertenece al XI atacante");
 console.log("\n3) VARIEDAD");
 console.log(`  líneas de gol distintas acumuladas: ${golLineasVistas.size}`);
 ok(golLineasVistas.size >= 6, "Hay variedad de líneas de gol entre partidos (≥6 distintas)");
+
+// 3.5) Tarjetas y penales (Grupo E, post-Etapa 10): sobre muchos partidos,
+// cuando aparecen, las líneas no dejan placeholders sin reemplazar y
+// nombran a un jugador real del XI correspondiente.
+console.log("\n3.5) TARJETAS Y PENALES");
+let vistoAmarilla = false, vistoRoja = false, vistoPenalGol = false, vistoPenalAtajado = false;
+let sinPlaceholders = true, nombresTarjetasOK = true;
+for (let i = 0; i < 60; i++) {
+    const reg = jugarPartido(eq(60 + (i % 20)), difs[i % 4]);
+    const lineas = generarRelato(reg);
+
+    // Zip posicional dentro de cada tipo: generarRelato pushea una línea por
+    // evento, en el mismo orden relativo — filtrar por tipo en ambos lados
+    // preserva la correspondencia sin depender de minuto (puede repetirse).
+    for (const tipo of ["TARJETA_AMARILLA", "TARJETA_ROJA"]) {
+        const eventosTipo = reg.eventos.filter(e => e.tipo === tipo);
+        const lineasTipo = lineas.filter(l => l.tipo === tipo);
+        for (let k = 0; k < eventosTipo.length; k++) {
+            const e = eventosTipo[k];
+            const l = lineasTipo[k];
+            if (!l) continue;
+            if (tipo === "TARJETA_AMARILLA") vistoAmarilla = true; else vistoRoja = true;
+            if (/\{[A-Z]+\}/.test(l.texto)) sinPlaceholders = false;
+            const equipoIds = e.equipo === "USUARIO" ? reg.equipoUsuarioIds : reg.equipoRivalIds;
+            const autor = CAT.get(e.autor);
+            if (!autor || !nombresDe(equipoIds).has(autor.name) || !l.texto.includes(autor.name)) {
+                nombresTarjetasOK = false;
+            }
+        }
+    }
+    for (const e of reg.eventos) {
+        if (e.tipo === "GOL" && e.esPenal) vistoPenalGol = true;
+        if (e.tipo === "ATAJADA" && e.esPenal) vistoPenalAtajado = true;
+    }
+}
+ok(sinPlaceholders, "Ninguna línea de tarjeta/penal deja placeholders sin reemplazar");
+ok(nombresTarjetasOK, "Las tarjetas nombran a un jugador real del XI correspondiente");
+ok(vistoAmarilla && vistoRoja, `Aparecieron amarillas y rojas en 60 partidos (amarilla=${vistoAmarilla} roja=${vistoRoja})`);
+console.log(`  penal convertido visto: ${vistoPenalGol} · penal atajado visto: ${vistoPenalAtajado} (son raros a propósito, no es un fallo si alguno no salió en 60 partidos)`);
 
 // 4) Reproducibilidad
 console.log("\n4) REPRODUCIBILIDAD");

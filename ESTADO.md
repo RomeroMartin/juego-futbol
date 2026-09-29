@@ -731,7 +731,7 @@ Lo que quede de acá en más es mejora sobre lo ya construido, no plan pendiente
 
 ---
 
-## 14. Plan grande post-plan (en curso) — Grupos A, B, C y D hechos
+## 14. Plan grande post-plan — Grupos A, B, C, D y E hechos (plan cerrado)
 
 El grupo pidió una lista grande de mejoras nuevas (no forman parte de ningún
 plan previo). Se agruparon por riesgo/tamaño y se van construyendo en tandas
@@ -759,14 +759,23 @@ saber cuál es el estado real.
     matriz de contras ampliada de 4×3 a 8×6 y recalibrada con
     `scripts/simular-balance.mjs`, + manual de mentalidades en pantalla
     propia dentro del juego.
-- **Grupo E** ⏳ pendiente — subsistemas nuevos del motor, comparten
-  infraestructura entre sí:
-  - Banco de suplentes (solo torneos, no vs IA ni amistosos — confirmado).
-  - Tarjetas (amarilla/roja), con expulsión afectando el resto de ESE
-    partido y suspensión de 1 fecha en torneos.
-  - Lesiones (muy raras, 1-2 fechas, comparte infraestructura de "no
-    disponible → cubre el banco" con las suspensiones).
-  - Penales atajables (el arquero puede atajarlos, según sus stats).
+- **Grupo E** ✅ hecho (esta sección) — subsistemas nuevos del motor:
+  - Tarjetas (amarilla/roja), con la roja afectando el resto de ESE partido
+    (-12% de Fuerza Efectiva) y suspensión de 1 fecha en torneos.
+  - Penales, con el arquero pudiendo atajarlos según sus stats — frecuencia
+    recalibrada con el usuario para no romper el techo de 5+ goles de §33
+    (quedó bastante más rara de lo pedido originalmente, ver detalle abajo).
+  - Lesiones (muy raras, 1-2 fechas, solo entre fechas de torneo — no tocan
+    el partido en curso).
+  - Banco de suplentes (solo torneos, no vs IA ni amistosos — confirmado),
+    con auto-sustitución antes de jugar la fecha.
+
+**Con esto el plan grande post-plan queda cerrado.** Pendiente identificado
+para más adelante (no en esta sesión): recalibrar el motor entero
+(D/FACTOR_GOL/VARIANZA_OCASION) para poder subir la frecuencia de penales
+sin romper §33 — el usuario lo pidió explícitamente como una tarea aparte,
+ver "Conflicto de calibración" en la sección de Grupo E más abajo y en
+`js/config/motor.js`.
 
 ### Grupo A — hecho (post-Etapa 10, sesión previa a esta)
 - `js/data/plantillasRelato.js`: `ENTRETIEMPO`/`SEGUNDO_TIEMPO` (3 variantes
@@ -1072,3 +1081,108 @@ verdad fue el manual.
 6. Jugar un partido vs IA eligiendo una mentalidad nueva (ej. Contragolpe)
    y confirmar que el partido corre sin errores y el resumen post-partido
    muestra el análisis táctico con la etiqueta correcta.
+
+### Grupo E — hecho (esta sesión): tarjetas, penales, lesiones, banco de suplentes
+**Cierra el plan grande post-plan.** Aplica a todos los tipos de partido
+(vs IA, amistosos, torneos), salvo el banco/suspensiones/lesiones, que son
+solo de torneos.
+
+**Tarjetas y penales (motor, §27.1):**
+- `js/config/motor.js` (+ copia, idénticas): `PROB_TARJETA` (0.19),
+  `MULT_TARJETA_PRESION` (1.60 — el +60% que PRESIÓN ALTA Y RUDA ya
+  documentaba desde la Etapa 5 sin estar implementado), `PROB_ROJA_DIRECTA`
+  (0.02), `PENALIZACION_ROJA` (0.88, -12%, confirmado con el usuario),
+  `PROB_PENAL`, `PENAL_PISO`/`PENAL_RANGO` (conversión de penal).
+- `js/core/motor.js` (+ copia, idénticas): `simularPartido` evalúa, por
+  cada posesión, si el equipo que DEFIENDE comete una falta (tarjeta) —
+  independiente de si esa posesión fue gol/atajada/cortada. Dentro de la
+  ocasión generada (Fase 2), una fracción chica se resuelve como penal en
+  vez de remate normal. Nuevas funciones puras: `mejorPateador` (el
+  delantero con mejor `shooting`, fijo — no se sortea como el goleador de
+  juego) y `elegirJugadorFalta` (uniforme entre los jugadores de campo del
+  equipo que defiende). La roja penaliza `fA`/`fB` UNA vez por equipo
+  (mutación in-place, no se recalcula desde cero).
+- `js/core/relato.js` + `js/data/plantillasRelato.js`: nuevos tipos de
+  evento `TARJETA_AMARILLA`, `TARJETA_ROJA` (con `segundaAmarilla` para
+  elegir la plantilla correcta) y el flag `esPenal` en `GOL`/`ATAJADA` (se
+  reusa el mismo tipo de evento — así `derivarEstadisticas`/`calcularMVP`
+  los cuentan automático, sin tocarlos). 5 juegos de ≥6 plantillas cada uno.
+
+**Conflicto de calibración con el usuario (§33, resuelto):** la frecuencia
+de penales pedida originalmente era "~1 cada 4-5 partidos" (la real del
+fútbol). Medido con `scripts/simular-balance.mjs`: a esa frecuencia, un
+penal convierte tan por encima del techo matemático de un remate abierto
+(~31%, dado por `FACTOR_GOL`) que la cola de 5+ goles subía de 10.1% a
+~11.8%, rompiendo el techo de §33 (≤11%, el "piso de Poisson" de la Etapa
+5). Bajar la conversión del penal casi no ayudaba — la FRECUENCIA es la que
+domina la cola, no cuánto convierte. El usuario, ante la disyuntiva
+(relajar el techo del 11%, o recalibrar todo el motor, o priorizar el
+techo), pidió priorizar el techo por ahora y anotar la recalibración
+completa del motor como una tarea aparte para después de cerrar todas las
+mejoras — ver la nota extensa en `js/config/motor.js` sobre `PROB_PENAL`.
+Quedó en 1 penal cada ~23 partidos.
+
+**Lesiones y banco de suplentes (solo torneos, §39.1):**
+- `functions/index.js`:
+  - `BANCO_TAMANIO = 5`. `equipoTorneoVacio` ahora incluye `banco: []`.
+  - `reclamarSuplente`/`liberarSuplente` (nuevas Cloud Functions): mismo
+    criterio de exclusividad (`jugadoresReclamados`) y Pool de Reserva
+    (§37.1) que `reclamarJugador`/`liberarJugador`, pero sin atarse a un
+    slot de formación. `reclamarJugador` ahora también saca al jugador del
+    banco si estaba ahí (no puede estar en los dos a la vez).
+  - `torneo.noDisponibles`: `{ [playerId]: { motivo, hastaFecha } }`.
+    `suspensionesDePartido` (lee `TARJETA_ROJA` de los eventos del partido
+    recién simulado → 1 fecha afuera) y `lesionesDePartido` (~1.5% por
+    jugador que jugó, sorteado con un PRNG propio sembrado en la semilla
+    del partido — no `Math.random()`, aunque acá no hace falta
+    re-verificar como en el motor — 1 o 2 fechas afuera, nunca en el
+    partido recién jugado).
+  - `avanzarFecha`: antes de chequear XI completo, `autoSustituirNoDisponibles`
+    reemplaza a cualquier titular no disponible para ESA fecha con un
+    suplente de su misma posición que también esté disponible; si no hay
+    ninguno, el slot queda vacío y cae en el bloqueo de "incompletos" que
+    ya existía. La escritura de la auto-sustitución se difiere hasta
+    DESPUÉS de todas las lecturas de la transacción (Firestore exige que
+    todas las lecturas terminen antes de la primera escritura).
+- `js/core/nube.js`: `reclamarSuplenteNube`/`liberarSuplenteNube`.
+- `js/ui/torneos.js`: sección "Banco de suplentes (X/5)" en el armado
+  (picker propio, sin Pool de Reserva expuesto en el cliente todavía —
+  el servidor sí lo soporta); aviso "🚑 Suspendido/Lesionado: vuelve en…"
+  en el slot del XI cuando corresponde (`avisoNoDisponible`).
+- `firestore.rules`: no necesitó cambios — `torneos/{id}` y todas sus
+  subcolecciones (incluida `equipos/{uid}`) ya tenían `allow write: if
+  false` de punta a punta; los campos nuevos (`banco`, `noDisponibles`)
+  quedan automáticamente protegidos, solo los escribe el Admin SDK.
+
+**Decisión técnica a recordar:** las lesiones NO son un evento del motor —
+si lo fueran, habría que simular sustituciones EN VIVO durante el partido
+(sacar un jugador del array a mitad de simulación), mucho más invasivo. Se
+resolvió como un sorteo aparte, post-partido, que solo importa para la
+fecha SIGUIENTE — comparte el mismo mecanismo de "no disponible → banco
+cubre" que las suspensiones, pero nunca toca el partido que se acaba de
+jugar.
+
+### Cómo testear Grupo E
+1. `firebase deploy` (Cloud Functions nuevas/cambiadas: `reclamarSuplente`,
+   `liberarSuplente`, `avanzarFecha`, `reclamarJugador`).
+2. `node scripts/test-tarjetas-penales.mjs` (nuevo) → `TODOS LOS TESTS OK`
+   (frecuencia de amarillas 3-5/partido, aparecen penales, reproducibilidad).
+3. `node scripts/test-relato.mjs` → `TODOS LOS TESTS OK` (valida también
+   los 5 tipos de plantilla nuevos y que las tarjetas nombren al jugador
+   correcto).
+4. `node scripts/simular-balance.mjs` → "¿cumple §33? ✓ SÍ" (el 5+ goles
+   tiene que dar ≤11%).
+5. Jugar varios partidos vs IA o amistosos → deberían aparecer tarjetas
+   amarillas cada tanto en el relato (es frecuente, ~4/partido); rojas y
+   penales son más raros, puede llevar varios partidos verlos.
+6. En un torneo, armar el banco de suplentes (sección nueva en el armado) →
+   agregar hasta 5 jugadores, confirmar que respeta la exclusividad (no se
+   puede agregar uno que otro participante ya reclamó).
+7. Si en un partido de torneo un jugador ve la roja, confirmar que en la
+   ventana entre fechas aparece "🚑 Suspendido" en su slot, y que al jugar
+   la fecha siguiente el sistema lo cubre solo con un suplente de su
+   posición (si hay uno en el banco) o bloquea con "incompletos" (si no
+   hay).
+8. Las lesiones son muy raras (~1.5% por jugador por partido) — difícil de
+   ver sin subir `PROB_LESION` temporalmente en `functions/index.js` para
+   probar a mano.

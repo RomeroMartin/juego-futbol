@@ -251,6 +251,18 @@ export async function liberarJugadorNube(torneoId, playerId) {
     return res.data;
 }
 
+// Banco de suplentes (Grupo E, post-Etapa 10): misma exclusividad que el XI,
+// pero sin atarse a un slot de formación.
+export async function reclamarSuplenteNube(torneoId, playerId) {
+    const res = await llamar("reclamarSuplente")({ torneoId, playerId });
+    return res.data;
+}
+
+export async function liberarSuplenteNube(torneoId, playerId) {
+    const res = await llamar("liberarSuplente")({ torneoId, playerId });
+    return res.data;
+}
+
 // Pool de Reserva (§37.1): candidatos COMÚN que nadie posee, para una posición.
 export async function listarPoolReservaNube(torneoId, posicion) {
     const res = await llamar("listarPoolReserva")({ torneoId, posicion });

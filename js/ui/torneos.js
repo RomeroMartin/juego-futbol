@@ -40,6 +40,8 @@ import {
     elegirFormacionTorneoNube,
     reclamarJugadorNube,
     liberarJugadorNube,
+    reclamarSuplenteNube,
+    liberarSuplenteNube,
     listarPoolReservaNube,
     iniciarTorneoNube,
     avanzarFechaNube,
@@ -69,6 +71,11 @@ let equipoTorneo = null;     // mi equipo del torneo en vivo (o null)
 let slotAbierto = null;      // slot cuyo selector de jugador está abierto (o null)
 let reservaCandidatos = null; // candidatos del Pool de Reserva ya pedidos (o null)
 let cargandoReserva = false;
+let bancoPickerAbierto = false;   // picker del banco de suplentes abierto (Grupo E)
+
+// Banco de suplentes (Grupo E, post-Etapa 10): mismo tamaño que BANCO_TAMANIO
+// en functions/index.js (el servidor es quien de verdad lo hace cumplir).
+const BANCO_TAMANIO = 5;
 let mensajeArmado = null;    // aviso visible en pantalla { tipo:'ok'|'error'|'info', texto } (mejor que alert en mobile)
 
 // Pantalla "fecha jugada" (post-Etapa 10): tras JUGAR FECHA se muestra la
@@ -366,6 +373,7 @@ function pintarEdicionEquipo(t, uid, abierta) {
         ? `<button id="torneoCopiarIA" class="secondary-button torneo-copiar">📋 Copiar mi equipo del modo normal</button>`
         : "";
     const picker = (abierta && slotAbierto) ? pintarPicker(t, uid, posDeSlot[slotAbierto]) : "";
+    const banco = pintarBanco(t, uid, abierta);
     const mentalidad = pintarSelectorMentalidad();
 
     return `
@@ -374,6 +382,7 @@ function pintarEdicionEquipo(t, uid, abierta) {
         <h3>Tu equipo del torneo (${formacion})</h3>
         ${cancha}
         ${picker}
+        ${banco}
         ${mentalidad}
     `;
 }
@@ -437,6 +446,19 @@ function avisoFueraDePosicion(catEsperada, catReal) {
     return "Lado cambiado (-8%)";
 }
 
+// Suspensión (roja) o lesión (Grupo E, post-Etapa 10): si el jugador sigue
+// afuera para la fecha actual, avisa en el slot. El sistema lo va a cubrir
+// automático con el banco antes de jugar, si hay un suplente de su posición.
+function avisoNoDisponible(t, playerId) {
+    const info = (t.noDisponibles || {})[playerId];
+    if (!info) return null;
+    const fechaActual = t.fechaActual || 1;
+    if (fechaActual >= info.hastaFecha) return null;
+    const fechasRestantes = info.hastaFecha - fechaActual;
+    const motivo = info.motivo === "SUSPENSION" ? "Suspendido" : "Lesionado";
+    return `${motivo}: vuelve en ${fechasRestantes === 1 ? "la próxima fecha" : `${fechasRestantes} fechas`}`;
+}
+
 // La cancha con los slots de la formación, agrupados por línea (arriba = ataque).
 function pintarCancha(t, uid, formacion) {
     const slots = slotsDeFormacion(formacion);
@@ -452,11 +474,13 @@ function pintarCancha(t, uid, formacion) {
                 const jugador = CATALOGO.get(pid);
                 const esReserva = (equipoTorneo.reservaUsados || []).includes(pid);
                 const aviso = jugador ? avisoFueraDePosicion(categoria, categoriaJugador(jugador)) : null;
+                const noDisp = avisoNoDisponible(t, pid);
                 return `
                     <div class="torneo-slot ocupado" data-slot="${slot}">
                         <strong>${escapar(jugador?.name || "Jugador")}</strong>
                         <small>${escapar(jugador?.club || "")}${esReserva ? " · préstamo" : ""}</small>
                         ${aviso ? `<small class="torneo-slot-aviso" title="${aviso}">⚠ ${aviso}</small>` : ""}
+                        ${noDisp ? `<small class="torneo-slot-aviso torneo-slot-nodisp" title="${noDisp}">🚑 ${noDisp}</small>` : ""}
                         ${edicionAbiertaCliente(t) ? `<button class="torneo-slot-x" data-liberar="${pid}" title="Liberar">✕</button>` : ""}
                     </div>`;
             }
@@ -529,6 +553,89 @@ function pintarPicker(t, uid, posicion) {
             </div>
             <div class="torneo-pick-lista">${itemsPropios}</div>
             <div class="torneo-pick-reserva">${reservaBloque}</div>
+        </div>`;
+}
+
+
+// ==========================================
+// BANCO DE SUPLENTES (Grupo E, post-Etapa 10)
+// ==========================================
+//
+// Solo en torneos. No está atado a un slot de formación (cualquier suplente
+// puede cubrir cualquier puesto de su misma posición amplia): el servidor
+// auto-sustituye antes de jugar la fecha si un titular queda no disponible
+// (lesión o suspensión) y nadie lo cambió a mano.
+
+function pintarBanco(t, uid, abierta) {
+    const banco = equipoTorneo.banco || [];
+    const chips = [];
+    for (let i = 0; i < BANCO_TAMANIO; i++) {
+        const pid = banco[i];
+        if (pid) {
+            const jugador = CATALOGO.get(pid);
+            chips.push(`
+                <div class="torneo-slot ocupado torneo-banco-chip">
+                    <strong>${escapar(jugador?.name || "Jugador")}</strong>
+                    <small>${POS_NOMBRE[jugador?.position] || ""}${jugador?.club ? " · " + escapar(jugador.club) : ""}</small>
+                    ${abierta ? `<button class="torneo-slot-x" data-liberar-suplente="${pid}" title="Quitar">✕</button>` : ""}
+                </div>`);
+        } else {
+            chips.push(`
+                <button class="torneo-slot vacio" data-abrir-banco ${abierta ? "" : "disabled"}>
+                    <span>＋ Suplente</span>
+                </button>`);
+        }
+    }
+
+    const picker = (abierta && bancoPickerAbierto) ? pintarPickerBanco(t, uid) : "";
+
+    return `
+        <div class="torneo-banco">
+            <h3>Banco de suplentes (${banco.length}/${BANCO_TAMANIO})</h3>
+            <p class="torneo-nota">Si un titular queda no disponible (lesión o suspensión) y no lo
+            cambiaste a mano, el sistema cubre automático con un suplente de su misma posición antes
+            de jugar la fecha.</p>
+            <div class="torneo-cancha"><div class="torneo-linea">${chips.join("")}</div></div>
+            ${picker}
+        </div>`;
+}
+
+function pintarPickerBanco(t, uid) {
+    const yaOcupados = new Set([
+        ...Object.values(equipoTorneo.xi || {}).filter(Boolean),
+        ...(equipoTorneo.banco || [])
+    ]);
+    const reclamados = t.jugadoresReclamados || {};
+
+    const propios = estado.collection
+        .map(e => e.player)
+        .filter(p => !yaOcupados.has(p.id))
+        .sort((a, b) => (b.overall || 0) - (a.overall || 0));
+
+    const items = propios.length === 0
+        ? `<p class="torneo-nota">No tenés más jugadores libres en tu colección.</p>`
+        : propios.map(p => {
+            const dueno = reclamados[p.id];
+            const tomadoPorOtro = dueno && dueno !== uid;
+            if (tomadoPorOtro) {
+                return `<div class="torneo-pick-item tomado">
+                            <span>${escapar(p.name)} <small>${POS_NOMBRE[p.position]} · ${escapar(p.club || "")}</small></span>
+                            <em>reclamado por ${escapar(t.nombres?.[dueno] || "otro")}</em>
+                        </div>`;
+            }
+            return `<button class="torneo-pick-item" data-reclamar-suplente="${p.id}">
+                        <span>${escapar(p.name)} <small>${POS_NOMBRE[p.position]} · ${escapar(p.club || "")}</small></span>
+                        <strong>${p.overall ?? ""}</strong>
+                    </button>`;
+        }).join("");
+
+    return `
+        <div class="torneo-picker">
+            <div class="torneo-picker-head">
+                <strong>Elegí un suplente</strong>
+                <button class="torneo-pick-cerrar" id="torneoCerrarPickerBanco">✕</button>
+            </div>
+            <div class="torneo-pick-lista">${items}</div>
         </div>`;
 }
 
@@ -1012,6 +1119,19 @@ function enganchesArmado(t, uid, abierta) {
 
     const verReserva = document.getElementById("torneoVerReserva");
     if (verReserva) verReserva.addEventListener("click", () => onVerReserva(t.id));
+
+    // Banco de suplentes (Grupo E, post-Etapa 10).
+    cont().querySelectorAll("[data-abrir-banco]").forEach(b =>
+        b.addEventListener("click", () => { bancoPickerAbierto = true; pintar(); })
+    );
+    cont().querySelectorAll("[data-liberar-suplente]").forEach(b =>
+        b.addEventListener("click", () => onLiberarSuplente(t.id, Number(b.dataset.liberarSuplente)))
+    );
+    cont().querySelectorAll("[data-reclamar-suplente]").forEach(b =>
+        b.addEventListener("click", () => onReclamarSuplente(t.id, Number(b.dataset.reclamarSuplente)))
+    );
+    const cerrarBanco = document.getElementById("torneoCerrarPickerBanco");
+    if (cerrarBanco) cerrarBanco.addEventListener("click", () => { bancoPickerAbierto = false; pintar(); });
 }
 
 function engancharSelectorFormacion(t) {
@@ -1144,6 +1264,47 @@ async function onLiberar(torneoId, playerId) {
         }
     } catch (e) {
         mensajeArmado = { tipo: "error", texto: e?.message || "No se pudo liberar al jugador." };
+    } finally {
+        ocupado = false;
+        pintar();
+    }
+}
+
+// Banco de suplentes (Grupo E, post-Etapa 10).
+async function onReclamarSuplente(torneoId, playerId) {
+    if (ocupado) return;
+    ocupado = true;
+    mensajeArmado = null;
+    try {
+        await reclamarSuplenteNube(torneoId, playerId);
+        // Actualización optimista.
+        if (equipoTorneo) {
+            const banco = [...(equipoTorneo.banco || [])];
+            if (!banco.includes(playerId)) banco.push(playerId);
+            equipoTorneo.banco = banco;
+        }
+        const pl = CATALOGO.get(playerId);
+        mensajeArmado = { tipo: "ok", texto: `${pl?.name || "Jugador"} agregado al banco.` };
+        bancoPickerAbierto = false;
+    } catch (e) {
+        mensajeArmado = { tipo: "error", texto: e?.message || "No se pudo agregar al suplente (probá de nuevo)." };
+    } finally {
+        ocupado = false;
+        pintar();
+    }
+}
+
+async function onLiberarSuplente(torneoId, playerId) {
+    if (ocupado) return;
+    ocupado = true;
+    mensajeArmado = null;
+    try {
+        await liberarSuplenteNube(torneoId, playerId);
+        if (equipoTorneo?.banco) {
+            equipoTorneo.banco = equipoTorneo.banco.filter(id => id !== playerId);
+        }
+    } catch (e) {
+        mensajeArmado = { tipo: "error", texto: e?.message || "No se pudo quitar al suplente." };
     } finally {
         ocupado = false;
         pintar();

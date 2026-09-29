@@ -202,6 +202,35 @@ export function elegirGoleador(equipo, rand) {
 
 
 // ==========================================
+// PENAL — pateador (Grupo E, post-Etapa 10)
+// ==========================================
+//
+// El pateador NO se sortea (a diferencia del goleador de juego): es el
+// delantero con mejor `shooting` (la stat de "definición"). Toda formación
+// tiene al menos 1 delantero (§17), así que `delanteros` nunca está vacío.
+
+export function mejorPateador(equipo) {
+    return equipo.delanteros.reduce(
+        (mejor, j) => (j.shooting > mejor.shooting ? j : mejor),
+        equipo.delanteros[0]
+    );
+}
+
+
+// ==========================================
+// TARJETAS — jugador que comete la falta (Grupo E, post-Etapa 10)
+// ==========================================
+//
+// Uniforme entre los jugadores de campo (sin el arquero) del equipo que
+// defiende esa posesión. Consume exactamente una tirada del PRNG.
+
+export function elegirJugadorFalta(equipo, rand) {
+    const candidatos = [...equipo.defensores, ...equipo.medios, ...equipo.delanteros];
+    return candidatos[Math.floor(rand() * candidatos.length)];
+}
+
+
+// ==========================================
 // SIMULACIÓN DEL PARTIDO (§24, §25)
 // ==========================================
 //
@@ -218,6 +247,15 @@ export function simularPartido(equipoA, equipoB, semilla, opciones = null) {
     let golesA = 0;
     let golesB = 0;
     const eventos = [];
+
+    // Tarjetas por jugador en ESTE partido (Grupo E, post-Etapa 10): id →
+    // cantidad de amarillas (1 = ya tiene una; al llegar a la 2ª es roja).
+    // `rojaAplicada` asegura que la penalización de jugar con uno menos se
+    // sume UNA sola vez por equipo, aunque haya más de una expulsión.
+    const tarjetasA = new Map();
+    const tarjetasB = new Map();
+    let rojaAplicadaA = false;
+    let rojaAplicadaB = false;
 
     const nPosesiones =
         MOTOR.POSESIONES_MIN + Math.floor(rand() * MOTOR.POSESIONES_RANGO);
@@ -238,27 +276,83 @@ export function simularPartido(equipoA, equipoB, semilla, opciones = null) {
         const atk = atacaA ? fA : fB;
         const def = atacaA ? fB : fA;
         const equipoAtacante = atacaA ? equipoA : equipoB;
+        const equipoDefensor = atacaA ? equipoB : equipoA;
 
         // FASE 2 — ¿se genera ocasión?
         if (rand() < probabilidadDuelo(atk.ataque, def.defensa) * atk.frecuencia) {
-            const calidad = atk.ataque
-                * (MOTOR.VARIANZA_OCASION_MIN + rand() * MOTOR.VARIANZA_OCASION_SPAN)
-                * atk.calidadOcasion;
+            // Penal (Grupo E, post-Etapa 10): una fracción chica de las
+            // ocasiones generadas se resuelven como penal en vez de remate
+            // normal — pateador fijo (mejor definición) contra el arquero.
+            if (rand() < MOTOR.PROB_PENAL) {
+                const pateador = mejorPateador(equipoAtacante);
+                const probConversion = MOTOR.PENAL_PISO
+                    + probabilidadDuelo(scoreAtaque(pateador), def.arquero) * MOTOR.PENAL_RANGO;
 
-            // FASE 3 — ¿es gol? (calidad de la ocasión vs. arquero rival)
-            if (rand() < probabilidadDuelo(calidad, def.arquero) * MOTOR.FACTOR_GOL) {
-                if (atacaA) golesA++; else golesB++;
-                eventos.push({
-                    minuto,
-                    tipo: "GOL",
-                    equipo: equipoAtacante.id,
-                    autor: elegirGoleador(equipoAtacante, rand)
-                });
+                if (rand() < probConversion) {
+                    if (atacaA) golesA++; else golesB++;
+                    eventos.push({
+                        minuto, tipo: "GOL", equipo: equipoAtacante.id,
+                        autor: pateador.id, esPenal: true
+                    });
+                } else {
+                    eventos.push({ minuto, tipo: "ATAJADA", equipo: equipoAtacante.id, esPenal: true });
+                }
             } else {
-                eventos.push({ minuto, tipo: "ATAJADA", equipo: equipoAtacante.id });
+                const calidad = atk.ataque
+                    * (MOTOR.VARIANZA_OCASION_MIN + rand() * MOTOR.VARIANZA_OCASION_SPAN)
+                    * atk.calidadOcasion;
+
+                // FASE 3 — ¿es gol? (calidad de la ocasión vs. arquero rival)
+                if (rand() < probabilidadDuelo(calidad, def.arquero) * MOTOR.FACTOR_GOL) {
+                    if (atacaA) golesA++; else golesB++;
+                    eventos.push({
+                        minuto,
+                        tipo: "GOL",
+                        equipo: equipoAtacante.id,
+                        autor: elegirGoleador(equipoAtacante, rand)
+                    });
+                } else {
+                    eventos.push({ minuto, tipo: "ATAJADA", equipo: equipoAtacante.id });
+                }
             }
         } else {
             eventos.push({ minuto, tipo: "ATAQUE_CORTADO", equipo: equipoAtacante.id });
+        }
+
+        // Tarjetas (Grupo E, post-Etapa 10): se evalúan siempre, contra quien
+        // defendió esta posesión (gane o pierda la pelota).
+        const mentDefDefensor = equipoDefensor.mentalidadDefensiva || MENTALIDAD_DEF_DEFAULT;
+        const probTarjeta = MOTOR.PROB_TARJETA
+            * (mentDefDefensor === "PRESION_ALTA" ? MOTOR.MULT_TARJETA_PRESION : 1);
+
+        if (rand() < probTarjeta) {
+            const jugador = elegirJugadorFalta(equipoDefensor, rand);
+            const esA = equipoDefensor === equipoA;
+            const mapaTarjetas = esA ? tarjetasA : tarjetasB;
+            const yaAmarillo = mapaTarjetas.get(jugador.id) === 1;
+            const esRojaDirecta = !yaAmarillo && rand() < MOTOR.PROB_ROJA_DIRECTA;
+
+            if (yaAmarillo || esRojaDirecta) {
+                mapaTarjetas.set(jugador.id, 2);
+                eventos.push({
+                    minuto, tipo: "TARJETA_ROJA", equipo: equipoDefensor.id,
+                    autor: jugador.id, segundaAmarilla: yaAmarillo
+                });
+                if (esA && !rojaAplicadaA) {
+                    rojaAplicadaA = true;
+                    fA.ataque *= MOTOR.PENALIZACION_ROJA;
+                    fA.medio *= MOTOR.PENALIZACION_ROJA;
+                    fA.defensa *= MOTOR.PENALIZACION_ROJA;
+                } else if (!esA && !rojaAplicadaB) {
+                    rojaAplicadaB = true;
+                    fB.ataque *= MOTOR.PENALIZACION_ROJA;
+                    fB.medio *= MOTOR.PENALIZACION_ROJA;
+                    fB.defensa *= MOTOR.PENALIZACION_ROJA;
+                }
+            } else {
+                mapaTarjetas.set(jugador.id, 1);
+                eventos.push({ minuto, tipo: "TARJETA_AMARILLA", equipo: equipoDefensor.id, autor: jugador.id });
+            }
         }
     }
 

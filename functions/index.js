@@ -22,6 +22,7 @@ import {
     CLAVES_OFENSIVA, CLAVES_DEFENSIVA
 } from "./juego/config/mentalidades.js";
 import { simularPartido } from "./juego/core/motor.js";
+import { mulberry32 } from "./juego/core/prng.js";
 import { MOTOR } from "./juego/config/motor.js";
 import { ECONOMIA } from "./juego/config/economia.js";
 import {
@@ -608,9 +609,16 @@ function equipoTorneoVacio(formacion) {
         mentalidadOfensiva: MENTALIDAD_OF_DEFAULT,
         mentalidadDefensiva: MENTALIDAD_DEF_DEFAULT,
         reservaUsados: [],
+        banco: [],   // suplentes (Grupo E, post-Etapa 10) — ver BANCO_TAMANIO
         actualizadoEn: ahoraISO()
     };
 }
+
+// Banco de suplentes (Grupo E, post-Etapa 10): solo en torneos. Cualquier
+// suplente puede cubrir cualquier slot de su misma posición amplia (POR/DEF/
+// MED/DEL) cuando el sistema auto-sustituye — no está atado a un slot fijo
+// como el XI.
+const BANCO_TAMANIO = 5;
 
 
 // Elegir / cambiar la formación del equipo del torneo. Cambiar de formación
@@ -726,10 +734,13 @@ export const reclamarJugador = onCall(async (request) => {
         // OJO: en set(merge) una clave con punto ("xi.def1") NO es un campo anidado
         // (eso es solo en update), así que escribimos el mapa xi COMPLETO.
         const nuevoXi = { ...(equipo.xi || {}), [slot]: playerId };
+        // Si estaba en el banco (Grupo E), sale de ahí: no puede estar en los dos.
+        const banco = (equipo.banco || []).filter(id => id !== playerId);
         t.update(ref, { [`jugadoresReclamados.${playerId}`]: uid });
         t.set(equipoRef, {
             xi: nuevoXi,
             reservaUsados,
+            banco,
             actualizadoEn: ahoraISO()
         }, { merge: true });
 
@@ -770,6 +781,107 @@ export const liberarJugador = onCall(async (request) => {
 
         t.update(ref, { [`jugadoresReclamados.${playerId}`]: FieldValue.delete() });
         t.set(equipoRef, { xi: nuevoXi, reservaUsados, actualizadoEn: ahoraISO() }, { merge: true });
+
+        return { ok: true, playerId };
+    });
+});
+
+
+// ==========================================
+// TORNEOS — banco de suplentes (Grupo E, post-Etapa 10)
+// ==========================================
+//
+// Misma exclusividad que el XI (jugadoresReclamados) y el mismo Pool de
+// Reserva (§37.1), pero NO atado a un slot de formación: cualquiera de los
+// BANCO_TAMANIO suplentes puede cubrir cualquier puesto de su misma posición
+// amplia cuando el sistema auto-sustituye a un titular no disponible
+// (avanzarFecha). Editable en las mismas ventanas que el XI.
+
+export const reclamarSuplente = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const torneoId = request.data?.torneoId;
+    const playerId = request.data?.playerId;
+    if (!torneoId || playerId === undefined) throw new HttpsError("invalid-argument", "Faltan datos del reclamo.");
+
+    const player = CATALOGO.get(playerId);
+    if (!player) throw new HttpsError("invalid-argument", "Jugador inválido.");
+
+    const ref = db.doc(`torneos/${torneoId}`);
+    const equipoRef = db.doc(`torneos/${torneoId}/equipos/${uid}`);
+
+    return db.runTransaction(async (t) => {
+        const torneo = (await t.get(ref)).data();
+        exigirEdicionAbierta(torneo, uid);
+
+        const equipo = (await t.get(equipoRef)).data();
+        if (!equipo) throw new HttpsError("failed-precondition", "Elegí una formación antes de armar el banco.");
+
+        const banco = Array.isArray(equipo.banco) ? [...equipo.banco] : [];
+        if (banco.includes(playerId)) return { ok: true, playerId, yaEstaba: true };
+        if (banco.length >= BANCO_TAMANIO) {
+            throw new HttpsError("failed-precondition", `El banco admite como máximo ${BANCO_TAMANIO} suplentes.`);
+        }
+        if (Object.values(equipo.xi || {}).includes(playerId)) {
+            throw new HttpsError("failed-precondition", "Ese jugador ya está en tu XI titular.");
+        }
+
+        // Exclusividad (§36.1): misma que el XI.
+        const reclamados = torneo.jugadoresReclamados || {};
+        const duenoActual = reclamados[playerId];
+        if (duenoActual && duenoActual !== uid) {
+            throw new HttpsError("already-exists", "Otro participante ya reclamó a ese jugador.");
+        }
+
+        // Posesión propia, o Pool de Reserva (§37.1) — mismo criterio que el XI.
+        const propioSnap = await t.get(db.doc(`users/${uid}/collection/${String(playerId)}`));
+        const reservaUsados = Array.isArray(equipo.reservaUsados) ? [...equipo.reservaUsados] : [];
+
+        if (!propioSnap.exists) {
+            if (player.rarity !== "COMUN") {
+                throw new HttpsError("permission-denied", "No tenés a ese jugador.");
+            }
+            const poseidos = await idsPoseidosPorTorneoTx(t, torneo.participantes);
+            if (poseidos.has(playerId)) {
+                throw new HttpsError("permission-denied", "Ese jugador no está disponible como reserva.");
+            }
+            if (!reservaUsados.includes(playerId) && reservaUsados.length >= 3) {
+                throw new HttpsError("failed-precondition", "Llegaste al máximo de 3 jugadores de reserva (§37.1).");
+            }
+            reservaUsados.push(playerId);
+        }
+
+        banco.push(playerId);
+        t.update(ref, { [`jugadoresReclamados.${playerId}`]: uid });
+        t.set(equipoRef, { banco, reservaUsados, actualizadoEn: ahoraISO() }, { merge: true });
+
+        return { ok: true, playerId };
+    });
+});
+
+export const liberarSuplente = onCall(async (request) => {
+    const uid = requerirUid(request);
+    const torneoId = request.data?.torneoId;
+    const playerId = request.data?.playerId;
+    if (!torneoId || playerId === undefined) throw new HttpsError("invalid-argument", "Faltan datos.");
+
+    const ref = db.doc(`torneos/${torneoId}`);
+    const equipoRef = db.doc(`torneos/${torneoId}/equipos/${uid}`);
+
+    return db.runTransaction(async (t) => {
+        const torneo = (await t.get(ref)).data();
+        exigirEdicionAbierta(torneo, uid);
+
+        const reclamados = torneo.jugadoresReclamados || {};
+        if (reclamados[playerId] !== uid) {
+            throw new HttpsError("failed-precondition", "No tenés reclamado a ese jugador.");
+        }
+
+        const equipo = (await t.get(equipoRef)).data() || { banco: [], reservaUsados: [] };
+        const banco = (equipo.banco || []).filter(id => id !== playerId);
+        const reservaUsados = (equipo.reservaUsados || []).filter(id => id !== playerId);
+
+        t.update(ref, { [`jugadoresReclamados.${playerId}`]: FieldValue.delete() });
+        t.set(equipoRef, { banco, reservaUsados, actualizadoEn: ahoraISO() }, { merge: true });
 
         return { ok: true, playerId };
     });
@@ -824,6 +936,89 @@ const PUNTOS_TABLA = { V: 3, E: 1, D: 0 };
 function xiCompleto(equipoDoc) {
     if (!equipoDoc || !equipoDoc.formacion) return false;
     return slotsDeFormacion(equipoDoc.formacion).every(({ slot }) => equipoDoc.xi && equipoDoc.xi[slot]);
+}
+
+
+// ==========================================
+// NO DISPONIBLES: suspensión (roja) y lesión (Grupo E, post-Etapa 10)
+// ==========================================
+//
+// `torneo.noDisponibles`: { [playerId]: { motivo, hastaFecha } }. Un jugador
+// está afuera de las fechas < hastaFecha (vuelve a partir de hastaFecha).
+// Antes de jugar cada fecha, avanzarFecha auto-sustituye con el banco a
+// cualquier titular no disponible que nadie haya cambiado a mano; si no hay
+// suplente de su misma posición, el slot queda vacío y el equipo cae en el
+// bloqueo de "incompletos" que ya existía.
+
+// Roja en un partido de torneo → 1 fecha de suspensión (§39-style, sin
+// acumulación de amarillas entre partidos: cada partido las amarillas
+// arrancan de cero, ver motor.js). Vuelve en `fecha + 2` (afuera solo en la
+// fecha siguiente a la que se expulsó).
+function suspensionesDePartido(eventos, fecha) {
+    const out = {};
+    for (const e of eventos) {
+        if (e.tipo === "TARJETA_ROJA") {
+            out[e.autor] = { motivo: "SUSPENSION", hastaFecha: fecha + 2 };
+        }
+    }
+    return out;
+}
+
+// Lesiones (Grupo E, post-Etapa 10): ~1.5% por jugador que jugó ESA fecha,
+// evaluado una sola vez por partido con un PRNG propio sembrado en la misma
+// semilla del partido (no Math.random(): reproducible, aunque acá no hace
+// falta re-verificar como al motor — es solo el criterio del proyecto).
+// Afecta recién a partir de la fecha siguiente (no toca el partido en curso).
+// Rara a propósito, y como mucho 2 fechas afuera (confirmado con el usuario).
+const PROB_LESION = 0.015;
+function lesionesDePartido(equipoLocal, equipoVisitante, semilla, fecha) {
+    const rand = mulberry32((semilla ^ 0x6c657349) >>> 0);   // stream propio, no pisa al del motor
+    const out = {};
+    const jugadoresDe = (eq) => Object.values(eq.xi || {}).filter(Boolean);
+    for (const pid of [...jugadoresDe(equipoLocal), ...jugadoresDe(equipoVisitante)]) {
+        if (rand() < PROB_LESION) {
+            const duracion = rand() < 0.7 ? 1 : 2;   // casi siempre 1 fecha, a veces 2 (máx.)
+            out[pid] = { motivo: "LESION", hastaFecha: fecha + 1 + duracion };
+        }
+    }
+    return out;
+}
+
+// Auto-sustitución (Grupo E, post-Etapa 10): si un titular no está
+// disponible para ESTA fecha y nadie lo cambió a mano, se cubre con un
+// suplente de la misma posición amplia (POR/DEF/MED/DEL) que también esté
+// disponible y no esté ya en el XI. Si no hay ninguno, el slot queda vacío
+// (cae en el bloqueo de "incompletos" existente). Devuelve el equipo posta
+// (con el XI ya corregido) y si hubo algún cambio para persistir.
+function autoSustituirNoDisponibles(equipoDoc, noDisponibles, fecha) {
+    if (!equipoDoc || !equipoDoc.xi) return { equipo: equipoDoc, cambios: false };
+
+    const estaAfuera = (pid) => {
+        const info = noDisponibles[pid];
+        return !!info && fecha < info.hastaFecha;
+    };
+
+    const xi = { ...equipoDoc.xi };
+    const banco = Array.isArray(equipoDoc.banco) ? equipoDoc.banco : [];
+    const posDeSlot = slotsPorPosicion(equipoDoc.formacion);
+    let cambios = false;
+
+    for (const [slot, pid] of Object.entries(xi)) {
+        if (pid == null || !estaAfuera(pid)) continue;
+
+        const posicionNecesaria = posDeSlot[slot];
+        const idSuplente = banco.find(bid =>
+            bid
+            && !Object.values(xi).includes(bid)
+            && !estaAfuera(bid)
+            && CATALOGO.get(bid)?.position === posicionNecesaria
+        );
+
+        xi[slot] = idSuplente || null;
+        cambios = true;
+    }
+
+    return { equipo: { ...equipoDoc, xi }, cambios };
 }
 
 // Arma el equipo en el formato que espera el motor a partir del doc del equipo
@@ -1066,6 +1261,20 @@ export const avanzarFecha = onCall(async (request) => {
         // completo (por eso se excluye del chequeo de abajo).
         const abandonados = torneo.abandonados || {};
 
+        // Suspensiones (roja) y lesiones (Grupo E, post-Etapa 10): antes de
+        // chequear que el XI esté completo, auto-sustituir con el banco a
+        // cualquier titular no disponible para ESTA fecha que nadie haya
+        // cambiado a mano. Si no hay suplente de su posición, el slot queda
+        // vacío y cae en el bloqueo de "incompletos" de siempre.
+        const noDisponibles = torneo.noDisponibles || {};
+        const equiposConCambios = [];
+        for (const p of uids) {
+            if (abandonados[p]) continue;
+            const { equipo, cambios } = autoSustituirNoDisponibles(equipos[p], noDisponibles, fecha);
+            equipos[p] = equipo;
+            if (cambios) equiposConCambios.push(p);
+        }
+
         // Como el equipo se puede editar entre fechas, alguien puede haber
         // liberado un jugador y no haberlo reemplazado todavía: verificar XI
         // completo antes de simular (mismo criterio que iniciarTorneo), salvo
@@ -1076,10 +1285,19 @@ export const avanzarFecha = onCall(async (request) => {
             if (!xiCompleto(equipos[p])) incompletos.push(torneo.nombres?.[p] || "Jugador");
         }
         if (incompletos.length > 0) return { ok: false, incompletos };
+        // La auto-sustitución recién se ESCRIBE al final (todas las lecturas de
+        // la transacción tienen que terminar antes de la primera escritura;
+        // más abajo todavía se leen los docs de usuario).
 
         // Simular en el servidor (§41.4) los partidos aún sin jugar. Si alguno
         // de los dos abandonó, no se simula: se registra 0-3 en contra suyo
         // (§39); si abandonaron los dos, 0-0. Sin semilla real (sin relato).
+        //
+        // Tarjetas y lesiones (Grupo E, post-Etapa 10): de cada partido recién
+        // simulado se sacan las suspensiones por roja y se sortean lesiones,
+        // que van a pegar recién desde la fecha SIGUIENTE (nunca en ESTE
+        // partido — ya se jugó).
+        const nuevosNoDisponibles = {};
         for (const pt of jornada.partidos) {
             if (pt.golesLocal != null) continue;
 
@@ -1108,6 +1326,9 @@ export const avanzarFecha = onCall(async (request) => {
             pt.semilla = semilla;
             pt.golesLocal = r.golesA;
             pt.golesVisitante = r.golesB;
+
+            Object.assign(nuevosNoDisponibles, suspensionesDePartido(r.eventos, fecha));
+            Object.assign(nuevosNoDisponibles, lesionesDePartido(equipos[pt.local], equipos[pt.visitante], semilla, fecha));
         }
 
         const tabla = calcularTabla(torneo.participantes, torneo.nombres, fixture);
@@ -1172,12 +1393,27 @@ export const avanzarFecha = onCall(async (request) => {
             }, { merge: true });
         }
 
+        // Auto-sustitución (Grupo E): recién ahora se persiste, ya con todas
+        // las lecturas de la transacción cerradas.
+        for (const p of equiposConCambios) {
+            t.set(db.doc(`torneos/${torneoId}/equipos/${p}`), { xi: equipos[p].xi, actualizadoEn: ahoraISO() }, { merge: true });
+        }
+
+        // No disponibles (Grupo E): se suman las suspensiones/lesiones de esta
+        // fecha y se podan las que ya vencieron (vuelven en `siguiente` o antes
+        // — no hace falta seguir guardándolas).
+        const noDisponiblesFinal = { ...noDisponibles, ...nuevosNoDisponibles };
+        for (const [pid, info] of Object.entries(noDisponiblesFinal)) {
+            if (info.hastaFecha <= siguiente) delete noDisponiblesFinal[pid];
+        }
+
         t.update(ref, {
             fixture,
             tabla,
             fechaActual: finalizado ? fixture.length : siguiente,
             estado: finalizado ? "FINALIZADO" : "EN_CURSO",
             premiosOtorgados: finalizado ? true : (torneo.premiosOtorgados || false),
+            noDisponibles: noDisponiblesFinal,
             // Si sigue el torneo, se abre una nueva ventana de 1h para editar el
             // equipo antes de la próxima fecha (§17.3). El organizador puede
             // jugarla antes igual, sin esperar la hora.
@@ -1187,7 +1423,7 @@ export const avanzarFecha = onCall(async (request) => {
             ultimoAvanceEn: ahoraISO()
         });
 
-        return { ok: true, fechaJugada: fecha, finalizado, premios };
+        return { ok: true, fechaJugada: fecha, finalizado, premios, nuevosNoDisponibles };
     });
 });
 

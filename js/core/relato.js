@@ -79,13 +79,24 @@ export function generarRelato(registro) {
         let texto;
         if (e.tipo === "GOL") {
             const goleador = CATALOGO.get(e.autor);
-            texto = elegir(PLANTILLAS.GOL)
+            const plantillas = e.esPenal ? PLANTILLAS.PENAL_GOL : PLANTILLAS.GOL;
+            texto = elegir(plantillas)
                 .replace("{GOLEADOR}", goleador ? goleador.name : "el delantero")
                 .replace("{EQUIPO}", nombreAtacante);
         } else if (e.tipo === "ATAJADA") {
-            texto = elegir(PLANTILLAS.ATAJADA)
+            const plantillas = e.esPenal ? PLANTILLAS.PENAL_ATAJADO : PLANTILLAS.ATAJADA;
+            texto = elegir(plantillas)
                 .replace("{ARQUERO}", equipoDefensor.arquero.name)
                 .replace("{ATACANTE}", atacantePeligro(equipoAtacante).name);
+        } else if (e.tipo === "TARJETA_AMARILLA") {
+            const jugador = CATALOGO.get(e.autor);
+            texto = elegir(PLANTILLAS.TARJETA_AMARILLA)
+                .replace("{JUGADOR}", jugador ? jugador.name : "el jugador");
+        } else if (e.tipo === "TARJETA_ROJA") {
+            const jugador = CATALOGO.get(e.autor);
+            const plantillas = e.segundaAmarilla ? PLANTILLAS.TARJETA_ROJA_DOBLE : PLANTILLAS.TARJETA_ROJA_DIRECTA;
+            texto = elegir(plantillas)
+                .replace("{JUGADOR}", jugador ? jugador.name : "el jugador");
         } else { // ATAQUE_CORTADO
             const defensor = equipoDefensor.defensores[
                 Math.floor(rand() * equipoDefensor.defensores.length)

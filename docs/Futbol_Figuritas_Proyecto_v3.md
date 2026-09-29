@@ -1170,13 +1170,69 @@ Multiplicado por el `scoreAtaque` individual. Así los delanteros buenos meten m
 
 ## 27. Eventos del partido
 
-**V1 (obligatorios):** `GOL`, `ATAJADA`, `ATAQUE_CORTADO`, `FINAL`.
+**V1 (obligatorios):** `GOL`, `ATAJADA`, `ATAQUE_CORTADO`, `FINAL`. ✅ hecho.
 
-**V1.5:** `CONTRAATAQUE`, `PALO`, `FALTA`, `TARJETA_AMARILLA`, `CORNER`.
+**V1.5:** `CONTRAATAQUE`, `PALO`, `TARJETA_AMARILLA`, `CORNER`. `TARJETA_AMARILLA`
+✅ hecha (Grupo E, post-Etapa 10, ver §27.1) — el resto (`CONTRAATAQUE`, `PALO`,
+`CORNER`, y `FALTA` como evento propio) sigue sin construirse: no eran parte
+del pedido del grupo, así que se dejaron afuera del alcance de Grupo E.
 
-**V2:** `TARJETA_ROJA`, `PENAL`, `FUERA_DE_JUEGO`, `CAMBIO`, `LESIÓN`.
+**V2:** `TARJETA_ROJA`, `PENAL`, `LESIÓN`. ✅ hechos (Grupo E, ver §27.1).
+`FUERA_DE_JUEGO` y `CAMBIO` siguen sin construirse (tampoco eran parte del
+pedido del grupo).
 
-La mentalidad `PRESIÓN ALTA Y RUDA` aumenta un 60% la frecuencia de `FALTA` y `TARJETA_AMARILLA` (implementar en V1.5).
+La mentalidad `PRESIÓN ALTA Y RUDA` aumenta un 60% la frecuencia de
+`TARJETA_AMARILLA` (implementado — `MOTOR.MULT_TARJETA_PRESION`, ya no hace
+falta un evento `FALTA` separado para esto).
+
+### 27.1. Tarjetas, penales y lesiones (Grupo E, post-Etapa 10)
+
+Aplican a **todos** los tipos de partido (vs IA, amistosos y torneos) salvo
+el banco de suplentes y las suspensiones/lesiones entre fechas, que son
+**solo de torneos** (ver §39.1).
+
+**Tarjetas.** Se evalúan una vez por posesión (`js/core/motor.js`, dentro del
+mismo loop de §24), contra el equipo que DEFIENDE esa posesión, gane o
+pierda la pelota. ~4 amarillas por partido en total (confirmado con el
+usuario — "moderada"). 2 amarillas del mismo jugador en el mismo partido =
+roja; también hay una fracción chica de rojas directas
+(`MOTOR.PROB_ROJA_DIRECTA`). Una roja penaliza la Fuerza Efectiva del equipo
+que se queda con uno menos en −12% (ataque/medio/defensa), UNA sola vez por
+equipo, por el resto de ESE partido — no se recalcula jugador por jugador,
+es un multiplicador fijo (`MOTOR.PENALIZACION_ROJA`).
+
+**Penales.** Una fracción chica de las ocasiones generadas (§25, Fase 2
+exitosa) se resuelven como penal en vez de remate normal: patea el
+delantero con mejor `shooting` (no se sortea, a diferencia del goleador de
+juego, §26), contra el arquero rival. La conversión favorece mucho al
+pateador (65-85%, `MOTOR.PENAL_PISO`/`PENAL_RANGO`) — "a veces sean goles y
+otras veces ataje el arquero", como pidió el usuario.
+
+> ⚠️ **Conflicto de calibración, resuelto con el usuario:** la frecuencia
+> pedida originalmente era "~1 penal cada 4-5 partidos" (la real del
+> fútbol). Un penal convierte mucho más que un remate abierto (remate
+> abierto: techo matemático ~31%, dado por `FACTOR_GOL`), así que meter esa
+> "válvula de alta conversión" — aunque sea poco frecuente — engorda
+> desproporcionadamente la cola de goleadas de §33 (5+ goles ≤11%, el "piso
+> de Poisson" de la Etapa 5) mucho más de lo que mueve el promedio. El
+> usuario priorizó no romper ese techo ya documentado: `MOTOR.PROB_PENAL`
+> quedó en 1 penal cada ~23 partidos, bastante más raro que el pedido
+> original. **Recalibrar el motor entero para hacerle lugar de verdad a los
+> penales sin este trade-off queda pendiente como tarea aparte**, después de
+> cerrar el resto de las mejoras (ver ESTADO.md).
+
+**Lesiones.** A diferencia de las tarjetas, NO son un evento del motor: se
+sortean una sola vez por jugador que jugó, después de simular el partido
+(`functions/index.js`, `avanzarFecha`), con ~1.5% de probabilidad por
+jugador (`PROB_LESION`). No afectan al partido que se acaba de jugar — pegan
+recién desde la fecha siguiente, 1 o 2 fechas afuera (máximo 2, confirmado
+con el usuario). Solo tienen sentido en torneos (donde hay "fecha
+siguiente"); vs IA y amistosos no las tienen.
+
+Las plantillas de relato de tarjetas y penales viven en
+`js/data/plantillasRelato.js` (`TARJETA_AMARILLA`, `TARJETA_ROJA_DOBLE`,
+`TARJETA_ROJA_DIRECTA`, `PENAL_GOL`, `PENAL_ATAJADO`), con el mismo mínimo
+de 6 variantes por tipo que pide §28.
 
 ## 28. Relato del partido
 
@@ -1560,6 +1616,43 @@ Si un participante abandona con el torneo **en curso**, su equipo queda congelad
 > no tiene un flujo propio — hoy no existe ningún "salir del torneo" durante
 > `ARMADO`. Si hace falta, es una función aparte (`salirDelTorneoEnArmado` o
 > similar) que libere `jugadoresReclamados` del que se va.
+
+### 39.1. Banco de suplentes y no disponibles (Grupo E, post-Etapa 10)
+
+**Solo en torneos** (no vs IA ni amistosos — confirmado con el usuario).
+
+Cada equipo de torneo tiene, además del XI (`equipo.xi`), un **banco de
+hasta 5 suplentes** (`equipo.banco`, `BANCO_TAMANIO` en
+`functions/index.js`): jugadores reclamados con la MISMA exclusividad que el
+XI (`jugadoresReclamados`, §38) y el mismo Pool de Reserva (§37.1), pero sin
+atarse a un slot de formación — cualquier suplente puede cubrir cualquier
+puesto de su misma posición amplia (POR/DEF/MED/DEL).
+
+El torneo guarda además `torneo.noDisponibles`: `{ [playerId]: { motivo:
+"SUSPENSION"|"LESION", hastaFecha } }`. Un jugador está afuera de las fechas
+`< hastaFecha` (vuelve a partir de esa fecha). Se llena solo, en
+`avanzarFecha`, con lo que pasó en la fecha recién jugada:
+
+- **Suspensión**: un `TARJETA_ROJA` (§27.1) → 1 fecha de suspensión (vuelve
+  en `fecha + 2`). Sin acumulación de amarillas entre partidos (cada
+  partido las tarjetas arrancan de cero — es una limitación de diseño a
+  propósito, no un olvido).
+- **Lesión**: sorteo aparte, ver §27.1 — 1 o 2 fechas afuera.
+
+**Auto-sustitución.** Antes de chequear que el XI esté completo (§17.2),
+`avanzarFecha` recorre el XI de cada participante: si un titular figura en
+`noDisponibles` para la fecha que se está por jugar y nadie lo cambió a
+mano, se lo reemplaza automáticamente por un suplente disponible de su
+misma posición (si hay más de uno, el primero del banco en ese orden). Si
+no hay ningún suplente válido, el slot queda vacío y el equipo cae en el
+mismo bloqueo de "incompletos" que ya existía (§17.2) — el creador o el
+propio jugador tienen que completarlo a mano antes de poder jugar la fecha.
+
+La UI (`js/ui/torneos.js`) avisa en el slot del XI cuando el jugador puesto
+ahí está suspendido o lesionado ("🚑 Suspendido/Lesionado: vuelve en…"), y
+tiene su propia sección para armar el banco (misma mecánica de picker que
+el XI, sin Pool de Reserva expuesto en el cliente todavía — el servidor sí
+lo soporta si hiciera falta habilitarlo).
 
 ## 40. Formatos de torneo
 
