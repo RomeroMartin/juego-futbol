@@ -1457,6 +1457,32 @@ Si un participante abandona con el torneo **en curso**, su equipo queda congelad
 
 **Empezar solo con LIGA.** Es el formato que mejor funciona entre amigos: todos juegan la misma cantidad de partidos y nadie queda afuera en la primera fecha.
 
+### 40.1. Ida y vuelta y localía (post-Etapa 10)
+
+El creador del torneo elige, al crearlo, si el formato LIGA es **ida sola**
+(default) o **ida y vuelta**. Se guarda como `dobleVuelta` en el documento del
+torneo. Con ida y vuelta, `generarFixture` duplica el fixture de ida
+invirtiendo local/visitante de cada partido y agregando esas fechas a
+continuación de las de ida (torneo de 8 participantes: 7 fechas de ida + 7 de
+vuelta = 14).
+
+Solo cuando `dobleVuelta === true` la localía vale algo: el equipo local recibe
+un bono FIJO de **+3 Ataque y +3 Medio**, y el visitante una penalización de
+**−1 Ataque** (`MOTOR.LOCALIA` en `js/config/motor.js`). Es un empujoncito
+chico y constante frente al swing de mentalidad (±12) o el mod de formación
+(hasta ±9) — no decide el partido por sí solo. En torneos a una sola vuelta,
+en amistosos y en partidos vs IA la localía NO se aplica (no tendría sentido
+sin revancha).
+
+Técnicamente, `fuerzaEfectiva` y `simularPartido` (`js/core/motor.js`,
+espejado en `functions/juego/core/motor.js`) reciben un parámetro opcional
+`extra`/`opciones` con el bono a sumar DESPUÉS de todos los multiplicadores de
+mentalidad y formación. Tanto el servidor (`avanzarFecha`, que decide el
+resultado real) como el cliente (al re-simular el relato desde la semilla
+guardada) arman ese `opciones` de la misma manera a partir de
+`torneo.dobleVuelta`, para no romper la reproducibilidad byte a byte del
+partido.
+
 ## 41. Simulación de partidos del torneo
 
 > ✅ **Decisión B2 — CERRADA: avance MANUAL, con campos preparados para automatizar a futuro.**

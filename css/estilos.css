@@ -2889,6 +2889,22 @@ main {
 .torneo-card .main-button,
 .torneo-card .secondary-button { width: 100%; margin: 0; }
 
+.torneo-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.torneo-check input[type="checkbox"] {
+    width: auto;
+    margin-bottom: 0;
+    accent-color: var(--green);
+}
+
 .torneo-detalle {
     background: var(--surface);
     border: 1px solid var(--border);

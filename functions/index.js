@@ -22,6 +22,7 @@ import {
     CLAVES_OFENSIVA, CLAVES_DEFENSIVA
 } from "./juego/config/mentalidades.js";
 import { simularPartido } from "./juego/core/motor.js";
+import { MOTOR } from "./juego/config/motor.js";
 import { ECONOMIA } from "./juego/config/economia.js";
 import {
     abrirPaquete as ecoAbrirPaquete,
@@ -400,6 +401,7 @@ export const crearTorneo = onCall(async (request) => {
     const uid = requerirUid(request);
     const nombre = (request.data?.nombre || "").trim().slice(0, 40) || "Torneo";
     const formato = "LIGA";   // V1.0: solo liga (§40). ELIMINACION/GRUPOS: futuro.
+    const dobleVuelta = request.data?.idaYVuelta === true;   // §40, post-Etapa 10
 
     // Código único (reintenta ante una colisión, muy improbable).
     let codigo = null;
@@ -419,6 +421,7 @@ export const crearTorneo = onCall(async (request) => {
         estado: "BORRADOR",              // BORRADOR | ARMADO | EN_CURSO | FINALIZADO
         modoExclusividad: "RECLAMO",     // §36.1
         formato,
+        dobleVuelta,                     // ida (false) o ida y vuelta (true), §40
         minParticipantes: 4,             // §15.2 / §37
         maxParticipantes: 8,
         participantes: [uid],
@@ -847,12 +850,12 @@ function equipoMotorDesdeDoc(equipoDoc, id) {
 
 // Fixture de liga (todos contra todos, ida) por el método del círculo. Con N
 // impar se agrega un "libre" (null) que descansa. Alterna la localía por ronda.
-function generarFixture(participantes) {
+function generarFixture(participantes, dobleVuelta = false) {
     const arr = [...participantes];
     if (arr.length % 2 !== 0) arr.push(null);   // fecha libre
     const n = arr.length;
     const mitad = n / 2;
-    const fixture = [];
+    const ida = [];
 
     for (let r = 0; r < n - 1; r++) {
         const partidos = [];
@@ -869,7 +872,7 @@ function generarFixture(participantes) {
                 });
             }
         }
-        fixture.push({ fecha: r + 1, partidos });
+        ida.push({ fecha: r + 1, partidos });
         // Rotar dejando fijo el primer elemento.
         const fijo = arr[0];
         const resto = arr.slice(1);
@@ -877,7 +880,23 @@ function generarFixture(participantes) {
         arr.length = 0;
         arr.push(fijo, ...resto);
     }
-    return fixture;
+
+    if (!dobleVuelta) return ida;
+
+    // Vuelta (§40, post-Etapa 10): mismos cruces, local y visitante invertidos,
+    // a continuación de la ida. Ids con prefijo "v" para no chocar con los "f".
+    const totalIda = ida.length;
+    const vuelta = ida.map((jornada, idx) => ({
+        fecha: totalIda + idx + 1,
+        partidos: jornada.partidos.map((pt, i) => ({
+            id: `v${idx + 1}-${i + 1}`,
+            local: pt.visitante,
+            visitante: pt.local,
+            golesLocal: null, golesVisitante: null, semilla: null
+        }))
+    }));
+
+    return [...ida, ...vuelta];
 }
 
 // Semilla determinista por partido (§23): no usa Math.random, así el resultado
@@ -978,7 +997,7 @@ export const iniciarTorneo = onCall(async (request) => {
         }
         if (incompletos.length > 0) return { ok: false, incompletos };
 
-        const fixture = generarFixture(torneo.participantes);
+        const fixture = generarFixture(torneo.participantes, torneo.dobleVuelta === true);
         const tabla = calcularTabla(torneo.participantes, torneo.nombres, fixture);
 
         t.update(ref, {
@@ -1069,10 +1088,17 @@ export const avanzarFecha = onCall(async (request) => {
             }
 
             const semilla = semillaPartido(torneoId, pt.id);
+            // Localía (§40, post-Etapa 10): solo en torneos ida y vuelta. El
+            // cliente tiene que aplicar el mismo `opciones` al re-simular el
+            // relato con esta semilla, o el marcador no le va a coincidir.
+            const opciones = torneo.dobleVuelta
+                ? { extraA: MOTOR.LOCALIA.local, extraB: MOTOR.LOCALIA.visitante }
+                : null;
             const r = simularPartido(
                 equipoMotorDesdeDoc(equipos[pt.local], pt.local),
                 equipoMotorDesdeDoc(equipos[pt.visitante], pt.visitante),
-                semilla
+                semilla,
+                opciones
             );
             pt.semilla = semilla;
             pt.golesLocal = r.golesA;

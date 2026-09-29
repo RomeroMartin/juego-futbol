@@ -105,7 +105,7 @@ export function fuerzaEfectivaMedia(equipo) {
 // mismo enfrentamiento (ver js/config/mentalidades.js). La matriz se aplica una
 // sola vez, al ataque.
 
-export function fuerzaEfectiva(equipo, equipoRival) {
+export function fuerzaEfectiva(equipo, equipoRival, extra = null) {
     const f = FORMACIONES[equipo.formacion] || FORMACIONES[FORMACION_DEFAULT];
 
     const claveOf  = equipo.mentalidadOfensiva  || MENTALIDAD_OF_DEFAULT;
@@ -138,6 +138,17 @@ export function fuerzaEfectiva(equipo, equipoRival) {
     // (BLOQUE COMPACTO rival → −15% ocasiones mías). Calidad = mi ofensiva.
     const frecuencia = of.frecuencia * rivalDef.frecuenciaRival;
     const calidadOcasion = of.calidadOcasion;
+
+    // 4. Bono/penalización FIJO adicional (ej. localía en torneos ida y vuelta,
+    // post-Etapa 10): se suma al final, DESPUÉS de todos los multiplicadores,
+    // como un empujón chico y constante — no un factor que se agranda con el
+    // resto de la táctica. `null` (default) para cualquier partido que no lo
+    // pida explícitamente: vs IA, amistosos y torneos a una sola vuelta.
+    if (extra) {
+        ataque  += extra.ataque  || 0;
+        medio   += extra.medio   || 0;
+        defensa += extra.defensa || 0;
+    }
 
     return {
         ataque,
@@ -193,11 +204,11 @@ export function elegirGoleador(equipo, rand) {
 // El orden de consumo del PRNG es fijo, lo que garantiza reproducibilidad
 // byte por byte para una misma semilla.
 
-export function simularPartido(equipoA, equipoB, semilla) {
+export function simularPartido(equipoA, equipoB, semilla, opciones = null) {
     const rand = mulberry32(semilla);
 
-    const fA = fuerzaEfectiva(equipoA, equipoB);
-    const fB = fuerzaEfectiva(equipoB, equipoA);
+    const fA = fuerzaEfectiva(equipoA, equipoB, opciones?.extraA);
+    const fB = fuerzaEfectiva(equipoB, equipoA, opciones?.extraB);
 
     let golesA = 0;
     let golesB = 0;

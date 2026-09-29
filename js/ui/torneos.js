@@ -24,6 +24,7 @@ import {
 } from "../config/mentalidades.js";
 import { ECONOMIA } from "../config/economia.js";
 import { simularPartido } from "../core/motor.js";
+import { MOTOR } from "../config/motor.js";
 import { reproducirRelatoExterno } from "./partido.js";
 import { abrirPaqueteExterno } from "./paquetes.js";
 import { showScreen } from "./navegacion.js";
@@ -173,6 +174,10 @@ function pintarLista(c) {
             <div class="torneo-card">
                 <h3>Crear un torneo</h3>
                 <input id="torneoNombre" type="text" maxlength="40" placeholder="Nombre del torneo">
+                <label class="torneo-check">
+                    <input type="checkbox" id="torneoIdaYVuelta">
+                    Ida y vuelta (con localía — el local juega con una pequeña ventaja)
+                </label>
                 <button id="torneoCrear" class="main-button">CREAR</button>
             </div>
 
@@ -258,7 +263,7 @@ function pintarSala(c, t, uid) {
         <button class="back-button" id="torneoVolverLista">← Mis torneos</button>
 
         <div class="torneo-detalle">
-            <span class="eyebrow">${ESTADO_ETIQUETA[t.estado] || t.estado}</span>
+            <span class="eyebrow">${ESTADO_ETIQUETA[t.estado] || t.estado}${t.dobleVuelta ? " · Ida y vuelta" : ""}</span>
             <h2>${escapar(t.nombre)}</h2>
 
             <div class="torneo-codigo-box">
@@ -590,7 +595,7 @@ function pintarCompeticion(c, t, uid) {
     c.innerHTML = `
         <button class="back-button" id="torneoVolverLista">← Mis torneos</button>
         <div class="torneo-detalle">
-            <span class="eyebrow">${ESTADO_ETIQUETA[t.estado]}${finalizado ? "" : ` · Fecha ${t.fechaActual}/${totalFechas}`}</span>
+            <span class="eyebrow">${ESTADO_ETIQUETA[t.estado]}${t.dobleVuelta ? " · Ida y vuelta" : ""}${finalizado ? "" : ` · Fecha ${t.fechaActual}/${totalFechas}`}</span>
             <h2>${escapar(t.nombre)}</h2>
             ${cabecera}
             ${bannerMensaje()}
@@ -801,7 +806,14 @@ async function construirRegistroRelato(t, pt) {
 
     const localM = equipoTorneoAMotor(eqL, viewerVis ? "RIVAL" : "USUARIO");
     const visM   = equipoTorneoAMotor(eqV, viewerVis ? "USUARIO" : "RIVAL");
-    const r = simularPartido(localM.motor, visM.motor, pt.semilla);
+
+    // Localía (§40): si el torneo es ida y vuelta, el servidor la aplicó al
+    // simular de verdad — hay que aplicar el mismo bono acá o el marcador
+    // re-simulado no le va a coincidir al ya guardado.
+    const opciones = t.dobleVuelta
+        ? { extraA: MOTOR.LOCALIA.local, extraB: MOTOR.LOCALIA.visitante }
+        : null;
+    const r = simularPartido(localM.motor, visM.motor, pt.semilla, opciones);
 
     return {
         equipoUsuarioIds: viewerVis ? visM.ids : localM.ids,
@@ -994,9 +1006,10 @@ async function onCrear() {
     if (ocupado) return;
     const nombre = document.getElementById("torneoNombre").value.trim();
     if (!nombre) { alert("Ponele un nombre al torneo."); return; }
+    const idaYVuelta = document.getElementById("torneoIdaYVuelta")?.checked === true;
     ocupado = true;
     try {
-        const r = await crearTorneoNube(nombre);
+        const r = await crearTorneoNube(nombre, idaYVuelta);
         detalleId = r.torneoId;      // abrimos su detalle; la lista llega por el listener
         avisoValidacion = "";
         pintar();
