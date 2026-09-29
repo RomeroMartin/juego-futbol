@@ -25,6 +25,18 @@ export const ECONOMIA = {
         ia:       { victoria: 0, empate: 0, derrota: 0 }   // la IA nunca suma puntos
     },
     topeAmistososConPuntosPorDia: 3,   // los torneos no necesitan tope
+
+    // ------------------------------------------
+    // Límite de partidos vs IA (post-Etapa 10, mejora pedida por el grupo)
+    // ------------------------------------------
+    // La IA es sandbox ilimitado por diseño (§15.3.1), pero "ilimitado" se
+    // prestaba a sesiones maratónicas. Es una "carga" tipo stamina: se juega
+    // hasta agotarla, y recién ahí arranca la espera para que se recargue
+    // entera (no es una barra que sube de a poco).
+    limiteIA: {
+        maxPartidos: 20,
+        cooldownHoras: 5
+    },
     packRecompensa: { cantidad: 3, tipo: "PREMIUM" },
     fichas: { porPartido: 10, porVictoria: 25, porEmpate: 10, primeroDelDia: 50 },
     precios: { BASICO: 1000, PREMIUM: 3500, POSICIONAL: 1500 },

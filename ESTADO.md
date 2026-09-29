@@ -728,3 +728,96 @@ definido, solo faltaba conectarlo.
 ### Con esto, el plan de 10 etapas queda cerrado
 Todo lo del `Futbol_Figuritas_Plan_de_Etapas.md` original está implementado.
 Lo que quede de acá en más es mejora sobre lo ya construido, no plan pendiente.
+
+---
+
+## 14. Plan grande post-plan (en curso) — Grupos A y B hechos
+
+El grupo pidió una lista grande de mejoras nuevas (no forman parte de ningún
+plan previo). Se agruparon por riesgo/tamaño y se van construyendo en tandas
+separadas, cada una con su propio PR. **Este archivo se va a ir actualizando
+a medida que se cierre cada grupo** — mirá la fecha del último commit para
+saber cuál es el estado real.
+
+### El plan completo (para no perderlo de vista)
+
+- **Grupo A** ✅ hecho — relato marca el entretiempo; figurita muestra la
+  posición natural detallada (`detailedPosition`).
+- **Grupo B** ✅ hecho (esta sección) — límite diario ("stamina") de partidos
+  vs IA.
+- **Grupo C** ⏳ pendiente — torneos ida y vuelta al crearlos, con la localía
+  pesando (+3 Ataque/Medio al local, -1 Ataque al visitante — confirmado con
+  el usuario).
+- **Grupo D** ⏳ pendiente — toca las fórmulas centrales, necesita re-correr
+  el script de balance (§33) después:
+  - **D1**: penalización por jugar fuera de posición natural (-15% categoría
+    equivocada dentro de la línea — central/lateral, central/banda —, -8%
+    mismo tipo pero lado equivocado — confirmado con el usuario).
+  - **D2**: 4 mentalidades ofensivas nuevas (Contragolpe, Juego Directo,
+    Ataque Total, Desborde Individual) + 3 defensivas nuevas (Cerrojo, Línea
+    Adelantada, Repliegue tras Pérdida) — todas confirmadas con el usuario,
+    con sus descripciones en criollo ya acordadas para el manual en el juego
+    (pantalla propia, confirmado).
+- **Grupo E** ⏳ pendiente — subsistemas nuevos del motor, comparten
+  infraestructura entre sí:
+  - Banco de suplentes (solo torneos, no vs IA ni amistosos — confirmado).
+  - Tarjetas (amarilla/roja), con expulsión afectando el resto de ESE
+    partido y suspensión de 1 fecha en torneos.
+  - Lesiones (muy raras, 1-2 fechas, comparte infraestructura de "no
+    disponible → cubre el banco" con las suspensiones).
+  - Penales atajables (el arquero puede atajarlos, según sus stats).
+
+### Grupo A — hecho (post-Etapa 10, sesión previa a esta)
+- `js/data/plantillasRelato.js`: `ENTRETIEMPO`/`SEGUNDO_TIEMPO` (3 variantes
+  cada una, estilo "línea de marco" como INICIO).
+- `js/core/relato.js`: `generarRelato` las inserta antes del primer evento
+  con minuto ≥ 45 (o antes del FINAL si ninguno llega a la segunda mitad).
+- `js/ui/partido.js`: esas líneas se estilizan igual que INICIO/FINAL.
+- `js/ui/componentes.js`: `getDetailedPositionName` (mapea GK/CB/LB/RB/CDM/
+  CM/CAM/LM/RM/LW/RW/ST a español) + subtítulo en la carta del jugador.
+
+### Grupo B — hecho (esta sesión)
+**Límite de partidos vs IA**, carga tipo stamina: 20 partidos, y al llegar a
+0 arranca un cooldown de 5 horas; pasado el cooldown, se recarga **entera**
+(no de a poco). Solo aplica a vs IA — torneos y amistosos no tienen este
+límite (ya tienen su propio límite estructural).
+
+- `js/config/economia.js` (+ copia `functions/juego/config/economia.js`):
+  nuevo bloque `limiteIA: { maxPartidos: 20, cooldownHoras: 5 }`.
+- `js/core/economia.js` (+ copia `functions/juego/core/economia.js`):
+  - `usuarioNuevo()` agrega `partidosIADisponibles` (default `maxPartidos`) y
+    `iaSeRenuevaEn` (default `null`).
+  - `refrescarStaminaIA(usuario, ahora)`: si ya pasó `iaSeRenuevaEn`, recarga
+    entera y limpia la fecha. Muta `usuario`. La usan tanto el servidor (al
+    consumir) como el cliente (para MOSTRAR el número correcto sin esperar
+    una respuesta del servidor — no persiste nada del lado cliente).
+  - `consumirStaminaIA(usuario, ahora)`: llama a `refrescarStaminaIA` primero;
+    si no queda nada devuelve `{ok:false, seRenuevaEn}`; si hay, descuenta 1 y
+    arranca el cooldown si llegó a 0.
+- `functions/index.js`: `CAMPOS_USUARIO` incluye los 2 campos nuevos;
+  `registrarPartidoIA` llama a `consumirStaminaIA` ANTES de otorgar nada
+  (Fichas incluidas) — si no hay stamina, rechaza el partido entero con
+  `HttpsError("failed-precondition", ...)`.
+- `js/ui/partido.js`: `renderCompetir` muestra "⚡ X/20 partidos vs IA
+  disponibles hoy" o "⏳ Se renuevan a las HH:MM" (según `staminaIAActual()`,
+  el cálculo liviano de solo-lectura), y deshabilita los botones de
+  dificultad cuando no queda stamina.
+- `index.html` (`#staminaIA`) + `css/estilos.css` (`.stamina-ia`).
+
+**Decisión técnica:** el cliente no tiene listener en vivo del doc de
+usuario (limitación ya conocida, ver sección 11), así que `staminaIAActual()`
+recalcula localmente si ya pasó el cooldown, para no mostrarle a alguien "0
+disponibles" cuando en realidad ya se recargó. Es de solo lectura — la
+recarga real la hace el servidor la próxima vez que se llama
+`registrarPartidoIA`.
+
+### Cómo testear Grupo B
+1. `firebase deploy` (Cloud Function modificada).
+2. Entrar a Competir → debe verse "⚡ 20/20 partidos vs IA disponibles hoy".
+3. Jugar varios partidos → el contador baja de a uno.
+4. (Para probar el agotamiento sin jugar 20 veces) bajar `maxPartidos` a un
+   número chico en `js/config/economia.js` + `functions/juego/config/
+   economia.js` temporalmente, o jugar los 20 de una — al llegar a 0, los
+   botones de dificultad se deshabilitan y aparece la hora de recarga.
+5. Confirmar que jugar torneo/amistoso NO consume ni se ve afectado por este
+   contador.

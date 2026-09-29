@@ -1897,6 +1897,20 @@ main {
     margin-top: 8px;
 }
 
+.stamina-ia {
+    margin-top: 12px;
+    padding: 10px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.stamina-ia strong {
+    color: var(--white);
+}
+
 .dificultad-card {
     display: flex;
     flex-direction: column;

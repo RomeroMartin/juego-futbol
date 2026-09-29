@@ -28,6 +28,7 @@ import {
     comprarPaquete as ecoComprarPaquete,
     venderRepetido as ecoVenderRepetido,
     registrarResultadoEconomia,
+    consumirStaminaIA,
     usuarioNuevo,
     inventarioNuevo,
     reclamarBienvenidaSiCorresponde,
@@ -48,7 +49,7 @@ const CAMPOS_USUARIO = [
     "amistososConPuntosHoy", "fechaContadorAmistosos",
     "paquetesDesdeUltimoArquero", "paquetesDesdeUltimoDestacado",
     "paquetesBienvenidaReclamados", "primerPaqueteEspecialPendiente",
-    "ultimoPartidoDelDia"
+    "ultimoPartidoDelDia", "partidosIADisponibles", "iaSeRenuevaEn"
 ];
 
 
@@ -317,6 +318,15 @@ export const registrarPartidoIA = onCall(async (request) => {
         const data = userSnap.data();
         const usuario = reconstruirUsuario(data);
         const paquetes = { ...inventarioNuevo(), ...(data.paquetes || {}) };
+
+        // Límite de partidos vs IA (post-Etapa 10): carga tipo stamina, se
+        // consume ANTES de otorgar nada. Si está en 0, se rechaza el partido.
+        const stamina = consumirStaminaIA(usuario);
+        if (!stamina.ok) {
+            throw new HttpsError("failed-precondition",
+                "No te quedan partidos vs IA por ahora. Se renuevan más tarde.",
+                { seRenuevaEn: stamina.seRenuevaEn });
+        }
 
         // Otorga Fichas según el resultado RE-SIMULADO por el servidor (§15.4).
         const eco = registrarResultadoEconomia(usuario, "IA", v.resultado);
