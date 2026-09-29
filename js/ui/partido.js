@@ -265,8 +265,9 @@ function reproducirRelato(lineas) {
         const l = lineas[i++];
         // Gol a favor (USUARIO) en verde; gol en contra en rojo.
         const claseGol = l.equipoId === "USUARIO" ? "relato-gol" : "relato-gol-contra";
+        const esMarco = ["INICIO", "FINAL", "ENTRETIEMPO", "SEGUNDO_TIEMPO"].includes(l.tipo);
         const clase = l.esGol ? `relato-linea ${claseGol}`
-            : (l.tipo === "INICIO" || l.tipo === "FINAL") ? "relato-linea relato-marco"
+            : esMarco ? "relato-linea relato-marco"
             : "relato-linea";
         const minuto = (l.tipo === "INICIO") ? "" : `${l.minuto}'`;
         cont.insertAdjacentHTML("beforeend",

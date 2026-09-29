@@ -469,6 +469,17 @@ main {
 }
 
 
+.player-position-detalle {
+
+    color: var(--muted);
+
+    font-size: 10px;
+
+    margin-top: 1px;
+
+}
+
+
 .player-avatar {
 
     height: 120px;
