@@ -49,6 +49,35 @@ export function getPositionName(position) {
 
 
 // ==========================================
+// POSICIÓN DETALLADA (post-Etapa 10, Grupo D1)
+// ==========================================
+//
+// `detailedPosition` viene del CSV de origen (§10.1) y ya está en cada
+// jugador; hasta ahora no se usaba para nada. Se muestra en la figurita y,
+// junto con `posicionSlot` (config/posiciones.js), determina la penalización
+// por jugar fuera de posición natural.
+
+const DETALLE_POSICION = {
+    GK:  "Arquero",
+    CB:  "Defensor Central",
+    LB:  "Lateral Izquierdo",
+    RB:  "Lateral Derecho",
+    CDM: "Volante Central (Defensivo)",
+    CM:  "Volante Central",
+    CAM: "Volante Ofensivo",
+    LM:  "Volante por Izquierda",
+    RM:  "Volante por Derecha",
+    LW:  "Extremo Izquierdo",
+    RW:  "Extremo Derecho",
+    ST:  "Delantero Centro"
+};
+
+export function getDetailedPositionName(detailedPosition) {
+    return DETALLE_POSICION[detailedPosition] || null;
+}
+
+
+// ==========================================
 // ÍCONO DE POSICIÓN
 // ==========================================
 
@@ -104,6 +133,12 @@ export function createPlayerCard(player, showQuantity = true, quantity = 1) {
         <div class="player-position">
             ${getPositionName(player.position)}
         </div>
+
+        ${
+            player.detailedPosition && player.detailedPosition !== "GK"
+                ? `<div class="player-position-detalle">${getDetailedPositionName(player.detailedPosition) || ""}</div>`
+                : ""
+        }
 
 
         <div class="player-avatar">

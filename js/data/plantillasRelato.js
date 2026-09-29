@@ -54,3 +54,16 @@ export const INICIO = [
     "Rueda la pelota: {USUARIO} recibe a {RIVAL}.",
     "Arranca el encuentro. {USUARIO} frente a {RIVAL}."
 ];
+
+// Marco del entretiempo (post-Etapa 10, mejora pedida por el grupo).
+export const ENTRETIEMPO = [
+    "El árbitro pita el final del primer tiempo.",
+    "Se termina la primera parte. Los equipos se van al descanso.",
+    "Fin de la primera etapa."
+];
+
+export const SEGUNDO_TIEMPO = [
+    "¡Arranca el segundo tiempo!",
+    "Vuelven los equipos a la cancha: se reanuda el partido.",
+    "Comienza la segunda mitad."
+];

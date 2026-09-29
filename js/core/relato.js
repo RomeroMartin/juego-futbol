@@ -12,7 +12,7 @@
 
 import { JUGADORES } from "../data/jugadores.js";
 import { mulberry32 } from "./prng.js";
-import { PLANTILLAS, INICIO } from "../data/plantillasRelato.js";
+import { PLANTILLAS, INICIO, ENTRETIEMPO, SEGUNDO_TIEMPO } from "../data/plantillasRelato.js";
 
 const CATALOGO = new Map(JUGADORES.map(j => [j.id, j]));
 
@@ -56,8 +56,21 @@ export function generarRelato(registro) {
             .replace("{RIVAL}", nombreRival)
     });
 
+    // Marco del entretiempo (post-Etapa 10): se inserta una sola vez, justo
+    // antes del primer evento de la segunda mitad. Si el partido no tuviera
+    // ningún evento a partir del 45' (raro), se inserta igual antes del FINAL.
+    let entretiempoInsertado = false;
+    const insertarEntretiempo = () => {
+        if (entretiempoInsertado) return;
+        entretiempoInsertado = true;
+        lineas.push({ minuto: 45, tipo: "ENTRETIEMPO", esGol: false, equipoId: null, texto: elegir(ENTRETIEMPO) });
+        lineas.push({ minuto: 45, tipo: "SEGUNDO_TIEMPO", esGol: false, equipoId: null, texto: elegir(SEGUNDO_TIEMPO) });
+    };
+
     // Una línea por evento.
     for (const e of registro.eventos) {
+        if (e.minuto >= 45) insertarEntretiempo();
+
         const atacaUsuario = e.equipo === "USUARIO";
         const equipoAtacante = atacaUsuario ? usuario : rival;
         const equipoDefensor = atacaUsuario ? rival : usuario;
@@ -90,6 +103,8 @@ export function generarRelato(registro) {
             texto
         });
     }
+
+    insertarEntretiempo();   // por si ningún evento llegó a la segunda mitad
 
     // Línea de final con el marcador.
     lineas.push({
