@@ -18,8 +18,9 @@
 
 import { JUGADORES } from "../data/jugadores.js";
 import { fuerzaEquipo } from "./motor.js";
+import { categoriaJugador } from "./formulas.js";
 import { generarNombreRival } from "../data/nombresRival.js";
-import { FORMACIONES, CLAVES_FORMACION } from "../config/formaciones.js";
+import { FORMACIONES, CLAVES_FORMACION, categoriasLinea } from "../config/formaciones.js";
 import {
     CLAVES_OFENSIVA,
     CLAVES_DEFENSIVA,
@@ -45,27 +46,56 @@ const TOLERANCIA = 1.5;
 const N_CANDIDATOS = 160;
 
 
-// Pool por categoría, ordenado por overall.
+// Pool por posición, ordenado por overall.
 const POOL = { POR: [], DEF: [], MED: [], DEL: [] };
 for (const j of JUGADORES) POOL[j.position].push(j);
 for (const k in POOL) POOL[k].sort((a, b) => a.overall - b.overall);
 
+// Pool por posición + categoría de sub-posición (D1, post-Etapa 10): para que
+// la IA arme "a propósito" por categoría (un lateral derecho de lateral
+// derecho, no al azar) y nunca dispare sola la penalización de fuera de
+// posición — si lo hiciera al azar, degradaría la Fuerza Efectiva del rival
+// de forma impredecible y rompería la calibración de dificultad por overall
+// (§31), que apunta a fuerzaEquipo (sin penalizar) + el offset de la tabla.
+const POOL_CAT = {
+    DEF: { CENTRAL: [], IZQUIERDA: [], DERECHA: [] },
+    MED: { CENTRAL: [], IZQUIERDA: [], DERECHA: [] },
+    DEL: { CENTRAL: [], IZQUIERDA: [], DERECHA: [] }
+};
+for (const j of JUGADORES) {
+    const cat = categoriaJugador(j);
+    if (cat && POOL_CAT[j.position]) POOL_CAT[j.position][cat].push(j);
+}
 
-// Elige n jugadores de una categoría cerca de un nivel de overall, al azar
-// (para que dos rivales seguidos no salgan iguales).
-function elegirCerca(cat, nivel, n, rand) {
+
+// Elige UN jugador de un pool cerca de un nivel de overall, al azar (para que
+// dos rivales seguidos no salgan iguales), sin repetir uno ya elegido en este
+// candidato (`excluir`). Si el pool pedido está vacío (categoría rarísima sin
+// jugadores en el dataset), cae al pool general de la posición como
+// salvaguarda — nunca debería pasar con el dataset real, pero evita un loop
+// infinito si pasara.
+function elegirUnoCerca(pool, poolGeneral, nivel, rand, excluir) {
+    const base = pool.length > 0 ? pool : poolGeneral;
     let ventana = 3;
-    let cand = POOL[cat].filter(j => Math.abs(j.overall - nivel) <= ventana);
-    while (cand.length < n) {
+    let cand = base.filter(j => Math.abs(j.overall - nivel) <= ventana && !excluir.has(j.id));
+    while (cand.length === 0) {
         ventana += 2;
-        cand = POOL[cat].filter(j => Math.abs(j.overall - nivel) <= ventana);
+        cand = base.filter(j => Math.abs(j.overall - nivel) <= ventana && !excluir.has(j.id));
     }
-    const copia = cand.slice();
-    const elegidos = [];
-    for (let i = 0; i < n; i++) {
-        elegidos.push(copia.splice(Math.floor(rand() * copia.length), 1)[0]);
-    }
-    return elegidos;
+    const elegido = cand[Math.floor(rand() * cand.length)];
+    excluir.add(elegido.id);
+    return elegido;
+}
+
+// Elige, para una línea completa, un jugador por cada categoría de sus slots
+// (D1) — devuelve los jugadores YA con `_categoriaSlot` adosado, en el mismo
+// orden que espera el motor.
+function elegirLineaCerca(position, cantidad, nivel, rand, excluir) {
+    const categorias = categoriasLinea(position, cantidad) || [];
+    return categorias.map(cat => ({
+        ...elegirUnoCerca(POOL_CAT[position][cat], POOL[position], nivel, rand, excluir),
+        _categoriaSlot: cat
+    }));
 }
 
 
@@ -75,9 +105,11 @@ function mediaAreas(areas) {
 }
 
 
-// Construye un candidato a rival con un nivel base y un sesgo de perfil al azar,
-// respetando los slots de la formación elegida (§17). `slots` = { POR,DEF,MED,DEL }.
-function construirCandidato(rand, slots) {
+// Construye un candidato a rival con un nivel base y un sesgo de perfil al
+// azar, respetando los slots Y las categorías de sub-posición (D1) de la
+// formación elegida (§17).
+function construirCandidato(rand, formacion) {
+    const slots = FORMACIONES[formacion].slots;
     const base = 48 + rand() * 38; // 48..86 (el extremo alto se cubre por ventana)
 
     // Sesgo de perfil: a veces uniforme, a veces ofensivo, a veces defensivo.
@@ -92,12 +124,13 @@ function construirCandidato(rand, slots) {
     }                             // resto: uniforme
     nivMed = base + (rand() * 4 - 2); // leve variación del medio
 
+    const excluir = new Set();
     const equipo = {
         id: "IA",
-        arquero:    elegirCerca("POR", nivArq, slots.POR, rand)[0],
-        defensores: elegirCerca("DEF", nivDef, slots.DEF, rand),
-        medios:     elegirCerca("MED", nivMed, slots.MED, rand),
-        delanteros: elegirCerca("DEL", nivDel, slots.DEL, rand)
+        arquero:    elegirUnoCerca(POOL.POR, POOL.POR, nivArq, rand, excluir),
+        defensores: elegirLineaCerca("DEF", slots.DEF, nivDef, rand, excluir),
+        medios:     elegirLineaCerca("MED", slots.MED, nivMed, rand, excluir),
+        delanteros: elegirLineaCerca("DEL", slots.DEL, nivDel, rand, excluir)
     };
 
     // Calidad cruda (base): rival-independiente, sin formación ni mentalidad.
@@ -187,12 +220,11 @@ export function generarRivalIA(fuerzaUsuario, dificultad, rand = Math.random) {
 
     // La IA elige su formación al azar (§31.1), a ciegas de tu XI.
     const formacion = elegir(CLAVES_FORMACION, rand);
-    const slots = FORMACIONES[formacion].slots;
 
     // Genera candidatos con esa formación y descarta perfiles degenerados.
     const candidatos = [];
     for (let i = 0; i < N_CANDIDATOS; i++) {
-        const c = construirCandidato(rand, slots);
+        const c = construirCandidato(rand, formacion);
         if (c.maxDev <= MAX_DESVIO_AREA) candidatos.push(c);
     }
 

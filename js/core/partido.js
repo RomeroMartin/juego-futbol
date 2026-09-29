@@ -13,7 +13,7 @@ import { JUGADORES } from "../data/jugadores.js";
 import { simularPartido, fuerzaEquipo } from "./motor.js";
 import { generarRivalIA } from "./rivalIA.js";
 import { scoreAtaque, scoreDefensor, scoreArquero } from "./formulas.js";
-import { FORMACION_DEFAULT } from "../config/formaciones.js";
+import { FORMACION_DEFAULT, conCategorias } from "../config/formaciones.js";
 import { MENTALIDAD_OF_DEFAULT, MENTALIDAD_DEF_DEFAULT } from "../config/mentalidades.js";
 
 
@@ -250,9 +250,13 @@ function equipoDesdeIds(ids, id) {
     return {
         id,
         arquero: CATALOGO.get(ids.arquero),
-        defensores: ids.defensores.map(i => CATALOGO.get(i)),
-        medios: ids.medios.map(i => CATALOGO.get(i)),
-        delanteros: ids.delanteros.map(i => CATALOGO.get(i)),
+        // conCategorias (D1) adosa la categoría esperada de sub-posición por
+        // ÍNDICE, asumiendo el mismo orden con el que se armó el equipo
+        // original (siempre el de slotsDeFormacion) — o la Fuerza Efectiva
+        // re-simulada no va a coincidir con la ya jugada.
+        defensores: conCategorias(ids.defensores.map(i => CATALOGO.get(i)), "DEF"),
+        medios:     conCategorias(ids.medios.map(i => CATALOGO.get(i)), "MED"),
+        delanteros: conCategorias(ids.delanteros.map(i => CATALOGO.get(i)), "DEL"),
         // Restaurar la táctica es imprescindible para reproducir el marcador.
         formacion: ids.formacion || FORMACION_DEFAULT,
         mentalidadOfensiva: ids.mentalidadOfensiva || MENTALIDAD_OF_DEFAULT,

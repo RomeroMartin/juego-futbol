@@ -32,6 +32,8 @@ import {
     CLAVES_DEFENSIVA
 } from "../config/mentalidades.js";
 
+import { categoriaJugador } from "../core/formulas.js";
+
 import { getPositionName, getPositionIcon } from "./componentes.js";
 import { updateHeader } from "./navegacion.js";
 
@@ -268,11 +270,30 @@ function construirCancha() {
 // RENDER EQUIPO
 // ==========================================
 
+// Texto de aviso si el jugador no encaja en la categoría de sub-posición del
+// slot (D1, post-Etapa 10) — mismo criterio que factorPosicion en
+// core/formulas.js, expresado en criollo para la figurita.
+function avisoFueraDePosicion(catEsperada, catReal) {
+    if (!catEsperada || !catReal || catEsperada === catReal) return null;
+    const esCentral = (c) => c === "CENTRAL";
+    if (esCentral(catReal) !== esCentral(catEsperada)) {
+        return "Fuera de posición (-15%)";
+    }
+    return "Lado cambiado (-8%)";
+}
+
 export function renderTeam() {
     // 1. La cancha se rearma según la formación activa (§17.1).
     construirCancha();
 
     if (formationSelect) formationSelect.value = estado.formacion;
+
+    // Categoría esperada de sub-posición por slot (D1), para avisar si el
+    // jugador puesto ahí no es de esa categoría.
+    const catDeSlot = {};
+    for (const { slot, categoria } of slotsDeFormacion(estado.formacion)) {
+        catDeSlot[slot] = categoria;
+    }
 
     // 2. Se colocan los jugadores asignados a cada slot.
     Object.entries(estado.team).forEach(([slotName, playerId]) => {
@@ -293,6 +314,7 @@ export function renderTeam() {
         }
 
         const player = playerItem.player;
+        const aviso = avisoFueraDePosicion(catDeSlot[slotName], categoriaJugador(player));
 
         slot.classList.remove("empty");
 
@@ -322,6 +344,7 @@ export function renderTeam() {
                     ${player.club}
                 </div>
 
+                ${aviso ? `<div class="slot-fuera-posicion" title="${aviso}">⚠ ${aviso}</div>` : ""}
 
                 <div class="remove-hint">
                     QUITAR

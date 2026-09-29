@@ -698,6 +698,55 @@ Posición secundaria    →  8% penalización sobre todas sus stats
 Posición incompatible  →  no permitido
 ```
 
+**V1 sigue vigente hoy** (`secondaryPosition` nunca se implementó); lo de arriba
+es sobre la línea AMPLIA (POR/DEF/MED/DEL) y sigue sin construirse. Lo que se
+construyó fue la sub-posición DENTRO de la línea (§18.1) — un problema
+distinto: un jugador SIEMPRE juega en su línea (eso lo valida `validarXI`,
+§17.1), la pregunta es de qué LADO de esa línea.
+
+### 18.1. Sub-posición dentro de la línea (D1, post-Etapa 10)
+
+Cada slot de una formación (§17) no es solo "DEF/MED/DEL": también tiene una
+categoría de sub-posición — CENTRAL, IZQUIERDA o DERECHA — según dónde cae
+dentro de su línea. DEF y MED comparten el mismo patrón según la cantidad de
+jugadores en la línea (una línea de 3 no tiene laterales — el fútbol real no
+los tiene en una defensa o un mediocampo de 3, esos espacios los cubren los
+carrileros de la línea de al lado); DEL tiene patrón propio (un ataque de 2
+son dos centrodelanteros, sin puntas — las puntas solo aparecen en un ataque
+de 3):
+
+| Cant. en la línea | DEF / MED | DEL |
+|---|---|---|
+| 1 | — | Central |
+| 2 | — | Central, Central |
+| 3 | Central, Central, Central | Izquierda, Central, Derecha |
+| 4 | Izquierda, Central, Central, Derecha | — |
+| 5 | Izquierda, Central, Central, Central, Derecha | — |
+
+La categoría REAL de cada jugador sale de `detailedPosition` (ya en el
+dataset desde la Etapa 2, EA FC): CB/CDM/CM/CAM/ST → Central;
+LB/LM/LW → Izquierda; RB/RM/RW → Derecha.
+
+**Penalización** (aplica a la Fuerza Efectiva — decide el partido; NO a la
+Fuerza Equipo, que se muestra antes de jugar y calibra al rival IA, §20.0):
+
+```text
+Categoría exacta           →  0% penalización
+Mismo tipo, lado cambiado  →  8% penalización  (ej. lateral derecho de izquierdo)
+Tipo equivocado             → 15% penalización  (ej. central jugando de lateral/banda)
+```
+
+Aplica a TODOS los equipos, incluido el rival generado por la IA: la IA
+arma su plantel eligiendo, para cada slot, un jugador de la categoría
+correcta según su `detailedPosition` (no al azar) — así el mecanismo está
+activo para los dos lados sin desarmar la calibración de dificultad por
+overall (§31), que sigue apuntando a fuerzaEquipo (sin esta penalización) +
+el offset de la tabla.
+
+La UI del armado de equipo (`js/ui/equipo.js`, y la cancha de torneos en
+`js/ui/torneos.js`) avisa en el slot cuando el jugador puesto ahí no es de
+la categoría esperada, con el % de penalización.
+
 ## 19. Mentalidades
 
 > 🟢 **Sistema nuevo.** Es la principal herramienta para cumplir el objetivo de que "el equipo con mejor valoración media no gane por defecto".

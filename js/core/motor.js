@@ -36,6 +36,9 @@ import {
     calcularAtaque,
     calcularMediocampo,
     calcularDefensa,
+    calcularAtaqueTactico,
+    calcularMediocampoTactico,
+    calcularDefensaTactico,
     scoreArquero,
     scoreAtaque
 } from "./formulas.js";
@@ -116,10 +119,12 @@ export function fuerzaEfectiva(equipo, equipoRival, extra = null) {
     const claveRivalDef = equipoRival.mentalidadDefensiva || MENTALIDAD_DEF_DEFAULT;
     const rivalDef = MENTALIDADES_DEF[claveRivalDef] || MENTALIDADES_DEF[MENTALIDAD_DEF_DEFAULT];
 
-    // 0. Stats base + modificador plano de formación (§20.5).
-    let ataque  = calcularAtaque(equipo.delanteros)                    + f.mod.ataque;
-    let medio   = calcularMediocampo(equipo.medios)                    + f.mod.medio;
-    let defensa = calcularDefensa(equipo.defensores, equipo.arquero)   + f.mod.defensa;
+    // 0. Stats base (YA con la penalización de fuera de posición, D1: la
+    // ubicación en la cancha es táctica, igual que la formación y la
+    // mentalidad) + modificador plano de formación (§20.5).
+    let ataque  = calcularAtaqueTactico(equipo.delanteros)                  + f.mod.ataque;
+    let medio   = calcularMediocampoTactico(equipo.medios)                  + f.mod.medio;
+    let defensa = calcularDefensaTactico(equipo.defensores, equipo.arquero) + f.mod.defensa;
 
     // 1. Mods planos de mentalidad propios (ofensiva + defensiva), §19.1/§19.2.
     ataque  += of.ataque;

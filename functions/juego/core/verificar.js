@@ -12,7 +12,7 @@
 
 import { simularPartido } from "./motor.js";
 import { JUGADORES } from "../data/jugadores.js";
-import { FORMACION_DEFAULT } from "../config/formaciones.js";
+import { FORMACION_DEFAULT, conCategorias } from "../config/formaciones.js";
 import { MENTALIDAD_OF_DEFAULT, MENTALIDAD_DEF_DEFAULT } from "../config/mentalidades.js";
 
 
@@ -20,7 +20,11 @@ const CATALOGO = new Map(JUGADORES.map(j => [j.id, j]));
 
 
 // Reconstruye un equipo del formato del motor a partir de los ids guardados.
-// Lanza si algún id no existe en el catálogo (registro adulterado).
+// Lanza si algún id no existe en el catálogo (registro adulterado). conCategorias
+// (D1, post-Etapa 10) adosa la categoría esperada de sub-posición por ÍNDICE,
+// igual que el cliente (core/partido.js) — mismo orden siempre, el de
+// slotsDeFormacion — o el marcador re-simulado acá no va a coincidir con el
+// que ya vio el cliente.
 function equipoDesdeIds(ids, id) {
     const buscar = (i) => {
         const j = CATALOGO.get(i);
@@ -30,9 +34,9 @@ function equipoDesdeIds(ids, id) {
     return {
         id,
         arquero: buscar(ids.arquero),
-        defensores: ids.defensores.map(buscar),
-        medios: ids.medios.map(buscar),
-        delanteros: ids.delanteros.map(buscar),
+        defensores: conCategorias(ids.defensores.map(buscar), "DEF"),
+        medios:     conCategorias(ids.medios.map(buscar), "MED"),
+        delanteros: conCategorias(ids.delanteros.map(buscar), "DEL"),
         formacion: ids.formacion || FORMACION_DEFAULT,
         mentalidadOfensiva: ids.mentalidadOfensiva || MENTALIDAD_OF_DEFAULT,
         mentalidadDefensiva: ids.mentalidadDefensiva || MENTALIDAD_DEF_DEFAULT

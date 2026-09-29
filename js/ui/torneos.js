@@ -23,6 +23,7 @@ import {
     MENTALIDAD_DEF_DEFAULT
 } from "../config/mentalidades.js";
 import { ECONOMIA } from "../config/economia.js";
+import { categoriaJugador } from "../core/formulas.js";
 import { simularPartido } from "../core/motor.js";
 import { MOTOR } from "../config/motor.js";
 import { reproducirRelatoExterno } from "./partido.js";
@@ -424,6 +425,15 @@ function pintarSelectorFormacion(actual) {
 }
 
 
+// Aviso si el jugador no encaja en la categoría de sub-posición del slot
+// (D1, post-Etapa 10) — mismo criterio que factorPosicion en core/formulas.js.
+function avisoFueraDePosicion(catEsperada, catReal) {
+    if (!catEsperada || !catReal || catEsperada === catReal) return null;
+    const esCentral = (c) => c === "CENTRAL";
+    if (esCentral(catReal) !== esCentral(catEsperada)) return "Fuera de posición (-15%)";
+    return "Lado cambiado (-8%)";
+}
+
 // La cancha con los slots de la formación, agrupados por línea (arriba = ataque).
 function pintarCancha(t, uid, formacion) {
     const slots = slotsDeFormacion(formacion);
@@ -433,15 +443,17 @@ function pintarCancha(t, uid, formacion) {
         const deLinea = slots.filter(s => s.position === pos);
         if (deLinea.length === 0) return "";
 
-        const celdas = deLinea.map(({ slot, position }) => {
+        const celdas = deLinea.map(({ slot, position, categoria }) => {
             const pid = xi[slot];
             if (pid) {
                 const jugador = CATALOGO.get(pid);
                 const esReserva = (equipoTorneo.reservaUsados || []).includes(pid);
+                const aviso = jugador ? avisoFueraDePosicion(categoria, categoriaJugador(jugador)) : null;
                 return `
                     <div class="torneo-slot ocupado" data-slot="${slot}">
                         <strong>${escapar(jugador?.name || "Jugador")}</strong>
                         <small>${escapar(jugador?.club || "")}${esReserva ? " · préstamo" : ""}</small>
+                        ${aviso ? `<small class="torneo-slot-aviso" title="${aviso}">⚠ ${aviso}</small>` : ""}
                         ${edicionAbiertaCliente(t) ? `<button class="torneo-slot-x" data-liberar="${pid}" title="Liberar">✕</button>` : ""}
                     </div>`;
             }
@@ -763,12 +775,17 @@ function partidoPorId(t, id) {
 // (objetos completos, con `id` para etiquetar los eventos) y los ids para el
 // relato. Mismo criterio que el servidor (equipoMotorDesdeDoc).
 function equipoTorneoAMotor(equipoDoc, id) {
-    const posDeSlot = mapaSlotPosicion(equipoDoc.formacion);
+    // Itera slotsDeFormacion (orden determinista) en vez de Object.entries(xi):
+    // no depende del orden de inserción del mapa, y de paso permite adosar la
+    // categoría esperada de sub-posición (D1, post-Etapa 10) por el slot
+    // EXACTO — mismo criterio que el servidor (equipoMotorDesdeDoc).
     const g = { POR: [], DEF: [], MED: [], DEL: [] };
-    for (const [slot, pid] of Object.entries(equipoDoc.xi || {})) {
+    for (const { slot, position, categoria } of slotsDeFormacion(equipoDoc.formacion)) {
+        const pid = (equipoDoc.xi || {})[slot];
         if (pid == null) continue;
         const pl = CATALOGO.get(pid);
-        if (pl && g[posDeSlot[slot]]) g[posDeSlot[slot]].push(pl);
+        if (!pl) continue;
+        g[position].push(position === "POR" ? pl : { ...pl, _categoriaSlot: categoria });
     }
     const of = equipoDoc.mentalidadOfensiva || MENTALIDAD_OF_DEFAULT;
     const def = equipoDoc.mentalidadDefensiva || MENTALIDAD_DEF_DEFAULT;
