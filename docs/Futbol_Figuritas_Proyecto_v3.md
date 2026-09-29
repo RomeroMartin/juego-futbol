@@ -827,6 +827,71 @@ Tu EQUIPO RÁPIDO encontró espacios contra su PRESIÓN ALTA. (+18% ataque)
 
 Esto enseña el sistema sin necesidad de tutorial.
 
+### 19.6. Mentalidades nuevas (D2, post-Etapa 10)
+
+Se agregaron **4 mentalidades ofensivas** y **3 defensivas** nuevas, pedidas
+por el grupo ("más tácticas y más mentalidades"). Mismo modelado que §19.1/
+§19.2 (mods planos al área + frecuencia/calidadOcasion propias), calibradas
+con `scripts/simular-balance.mjs` igual que las 7 originales — ninguna
+mentalidad supera el 40% de uso óptimo (§B de la corrida del script).
+
+**Nota de diseño (actualiza §19.5):** el texto original decía "el jugador
+debe descubrir esto jugando, no leyendo un manual". El grupo pidió lo
+contrario — un manual en criollo, en su propia pantalla, disponible cuando
+quieran (ver más abajo). La mentalidad del rival sigue sin revelarse antes
+del partido: lo que cambia es que ahora se puede consultar qué hace CADA
+mentalidad en abstracto, no lo que eligió el rival en esa partida puntual.
+
+**Ofensivas nuevas:**
+
+| Mentalidad | Mods | Perfil |
+|---|---|---|
+| **CONTRAGOLPE** | ataque +9, medio −9, frecuencia ×0.90, calidad ×1.40 | Ataca menos seguido, pero con ocasiones clarísimas |
+| **JUEGO DIRECTO** | ataque +10, medio −8, frecuencia ×1.15, calidad ×0.85 | Pelotazo largo: rápido y seguido, pero impreciso |
+| **ATAQUE TOTAL** | ataque +9, medio +2, frecuencia ×1.08, calidad ×0.90 | Vuelca gente al frente; su riesgo real vive en la matriz |
+| **DESBORDE INDIVIDUAL** | ataque +6, medio −4, frecuencia ×1.05, calidad ×1.10 | 1v1 por los costados; necesita amplitud (igual que JUEGO ABIERTO) |
+
+**Defensivas nuevas:**
+
+| Mentalidad | Mods | Perfil |
+|---|---|---|
+| **CERROJO** | medio −10, defensa +16, frecuenciaRival ×0.75 | El bloque bajo de siempre: la defensa más sólida, cede el medio por completo |
+| **LÍNEA ADELANTADA** | medio +6, defensa −14, frecuenciaRival ×0.85 | Aprieta arriba, deja un espacio enorme a la espalda |
+| **REPLIEGUE TRAS PÉRDIDA** | medio −2, defensa +3, frecuenciaRival ×0.92 | Mods chicos a propósito: su fuerza real es específica — corta las salidas rápidas del rival (matriz) |
+
+**Matriz de contras ampliada** de 4×3 (12 celdas) a 8×6 (48 celdas). Las 12
+celdas originales no se tocaron. Relaciones nuevas más marcadas (valores
+base, antes de `MATRIZ_ESCALA`):
+
+- **CONTRAGOLPE** es el enfrentamiento más polarizado de la matriz: ×1.28
+  contra LÍNEA ADELANTADA (el rival se adelanta, le sobra espacio atrás) y
+  ×0.82 contra REPLIEGUE TRAS PÉRDIDA (la mentalidad hecha específicamente
+  para cortarle la salida rápida).
+- **ATAQUE TOTAL** se frustra contra cualquier rival ordenado (×0.80 vs
+  CERROJO, ×0.82 vs REPLIEGUE) y solo rinde de verdad contra otro estilo
+  igual de arriesgado (PRESIÓN ALTA, LÍNEA ADELANTADA).
+- **LÍNEA ADELANTADA** como mentalidad defensiva es mala elección contra
+  cualquier estilo con velocidad en profundidad (EQUIPO RÁPIDO,
+  CONTRAGOLPE, JUEGO DIRECTO) pero aguanta mejor contra estilos lentos sin
+  esa velocidad (POSESIÓN, JUEGO ABIERTO, ambos bajados a ×0.95 en esta
+  columna).
+- **DESBORDE INDIVIDUAL** es parejo o favorable contra casi todo (crea su
+  propia ocasión), salvo contra una presión rápida que no lo deja encarar
+  (×0.88 vs PRESIÓN ALTA).
+
+**Compatibilidad estructural (§19.4) ampliada:** DESBORDE INDIVIDUAL
+necesita amplitud, igual rango que JUEGO ABIERTO (0.75 + amplitud/100 × 0.5).
+CERROJO necesita densidad central, más que BLOQUE COMPACTO — vive de tener
+gente atrás bloqueando el área (0.75 + densidadCentral/100 × 0.4, rango
+0.95–1.19, contra 0.99–1.09 de BLOQUE COMPACTO).
+
+**Manual en el juego:** pantalla propia (`manualScreen`, `js/ui/manual.js`),
+accesible desde el selector de mentalidad tanto en el armado normal
+(`js/ui/equipo.js`) como en el de torneos (`js/ui/torneos.js`). Para cada
+una de las 14 mentalidades (7 originales + 7 nuevas) muestra, sin números,
+qué mejora, qué empeora y contra qué rinde o sufre — la misma lectura de
+"quién le gana a quién" de este apartado, pero en criollo.
+
 ## 20. Cálculo de las stats de equipo
 
 > 🔴 **Ambigüedad resuelta respecto de v0.1.** La v0.1 daba dos fórmulas contradictorias para el Ataque: unos pesos por stat y, dos líneas después, "promedio(DEL1, DEL2, DEL3)". Nunca aclaraba si se promediaban los OVR o los scores ponderados. Acá queda cerrado.

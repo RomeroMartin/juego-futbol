@@ -28,6 +28,7 @@ import { renderTeam, initFiltrosEquipo, initTacticaEquipo } from "./ui/equipo.js
 import { initPartido } from "./ui/partido.js";
 import { initTorneos, detenerTorneos } from "./ui/torneos.js";
 import { initAmistosos, detenerAmistosos } from "./ui/amistosos.js";
+import { initManual } from "./ui/manual.js";
 
 
 // ==========================================
@@ -118,6 +119,7 @@ function arrancarJuegoUnaVez() {
     initPartido();
     initTorneos();
     initAmistosos();
+    initManual();
 }
 
 

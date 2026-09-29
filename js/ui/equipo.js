@@ -33,6 +33,7 @@ import {
 } from "../config/mentalidades.js";
 
 import { categoriaJugador } from "../core/formulas.js";
+import { abrirManual } from "./manual.js";
 
 import { getPositionName, getPositionIcon } from "./componentes.js";
 import { updateHeader } from "./navegacion.js";
@@ -56,15 +57,22 @@ const defMentalityDesc         = document.getElementById("defensiveMentalityDesc
 // Descripción corta de cada mentalidad (para el selector). El detalle numérico
 // vive en config/mentalidades.js; acá solo el perfil, en criollo.
 const DESC_OFENSIVA = {
-    EQUIPO_RAPIDO: "Verticalidad: muchas ocasiones, de menor calidad.",
-    JUEGO_ABIERTO: "Centros al área: depende del físico y del ancho de cancha.",
-    POSESION:      "Juego elaborado: pocas ocasiones, de mucha calidad.",
-    EQUILIBRADO:   "Sin bonos ni penalizaciones. La opción segura."
+    EQUIPO_RAPIDO:       "Verticalidad: muchas ocasiones, de menor calidad.",
+    JUEGO_ABIERTO:       "Centros al área: depende del físico y del ancho de cancha.",
+    POSESION:            "Juego elaborado: pocas ocasiones, de mucha calidad.",
+    EQUILIBRADO:         "Sin bonos ni penalizaciones. La opción segura.",
+    CONTRAGOLPE:         "Espera y golpea rápido: pocas ocasiones, clarísimas.",
+    JUEGO_DIRECTO:       "Pelotazo largo, se salta el medio: rápido pero impreciso.",
+    ATAQUE_TOTAL:        "Todos al frente: mucho volumen, muy expuesto atrás.",
+    DESBORDE_INDIVIDUAL: "1 contra 1 por afuera: gana duelos, necesita ancho."
 };
 const DESC_DEFENSIVA = {
-    BLOQUE_COMPACTO: "Aguantar y esperar: concede menos ocasiones.",
-    PRESION_ALTA:    "Alto riesgo, alta recompensa: recuperás arriba, quedás expuesto atrás.",
-    LINEA_MEDIA:     "Sin bonos ni penalizaciones. La opción segura."
+    BLOQUE_COMPACTO:        "Aguantar y esperar: concede menos ocasiones.",
+    PRESION_ALTA:           "Alto riesgo, alta recompensa: recuperás arriba, quedás expuesto atrás.",
+    LINEA_MEDIA:            "Sin bonos ni penalizaciones. La opción segura.",
+    CERROJO:                "El bloque bajo de siempre: casi nadie te hace un gol.",
+    LINEA_ADELANTADA:       "Línea muy arriba: aprieta, pero deja espacio a la espalda.",
+    REPLIEGUE_TRAS_PERDIDA: "Repliegue rápido: corta contraataques, no presiona arriba."
 };
 
 // Clase de fila en la cancha por posición (para reusar el CSS existente).
@@ -684,6 +692,9 @@ export function initTacticaEquipo() {
     });
 
     actualizarDescMentalidades();
+
+    document.getElementById("abrirManualDesdeEquipo")
+        ?.addEventListener("click", () => abrirManual("teamScreen"));
 }
 
 function actualizarDescMentalidades() {

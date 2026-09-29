@@ -71,6 +71,56 @@ export const MENTALIDADES_OF = {
         ataque: 0, medio: 0, defensa: 0,
         frecuencia: 1.00,
         calidadOcasion: 1.00
+    },
+
+    // ------------------------------------------
+    // NUEVAS (D2, post-Etapa 10). Mismo criterio de modelado que arriba: mods
+    // planos al área + frecuencia/calidadOcasion propias. Puntos de partida
+    // pensados por el concepto futbolístico de cada una; el valor final, como
+    // las de §19.1, sale de scripts/simular-balance.mjs (ninguna > 40% de uso
+    // óptimo). Su verdadero carácter también vive en MATRIZ_CONTRAS más abajo
+    // (a quién le gana, a quién le pierde) — los mods son solo el punto de
+    // partida "en el vacío", sin rival.
+    // ------------------------------------------
+
+    CONTRAGOLPE: {
+        etiqueta: "CONTRAGOLPE",
+        // Cede el mediocampo a propósito (no busca la pelota) para golpear
+        // rápido y con pocos toques apenas la recupera. El corte de
+        // frecuencia arrancó muy fuerte (0.75) y la dejaba casi sin uso —
+        // se suavizó dos veces (0.85, después 0.90) para que la calidad de
+        // ocasión (subida a 1.40) alcance a compensarlo.
+        ataque: +9, medio: -9, defensa: 0,
+        frecuencia: 0.90,      // ataca menos seguido...
+        calidadOcasion: 1.40   // ...pero cuando lo hace, es una ocasión clara
+    },
+    JUEGO_DIRECTO: {
+        etiqueta: "JUEGO DIRECTO",
+        // Se salta el mediocampo con pelotazos largos a los delanteros. La
+        // penalización de medio arrancó muy fuerte (-12) y la dejaba casi sin
+        // uso — se suavizó a -8.
+        ataque: +10, medio: -8, defensa: 0,
+        frecuencia: 1.15,      // más intentos, más rápido
+        calidadOcasion: 0.85   // pelotazo largo: menos preciso que jugado
+    },
+    ATAQUE_TOTAL: {
+        etiqueta: "ATAQUE TOTAL",
+        // Todo el equipo vuelca al frente. Su riesgo real (queda expuesto
+        // atrás) vive sobre todo en la matriz, no acá — pero el mod plano
+        // arrancó demasiado alto (dominaba >40% de uso óptimo, ver
+        // simular-balance.mjs) y se bajó.
+        ataque: +9, medio: +2, defensa: 0,
+        frecuencia: 1.08,
+        calidadOcasion: 0.90   // cantidad de gente arriba, no siempre calidad
+    },
+    DESBORDE_INDIVIDUAL: {
+        etiqueta: "DESBORDE INDIVIDUAL",
+        // Juego 1v1 por los costados con jugadores de buen regate/ritmo, no
+        // centros al área (eso es JUEGO ABIERTO). También necesita amplitud
+        // (ver compatAtaque más abajo).
+        ataque: +6, medio: -4, defensa: 0,
+        frecuencia: 1.05,
+        calidadOcasion: 1.10   // ganar el 1v1 suele ser una ocasión clara
     }
 };
 
@@ -111,6 +161,39 @@ export const MENTALIDADES_DEF = {
         etiqueta: "LÍNEA MEDIA",
         medio: 0, defensa: 0,
         frecuenciaRival: 1.00
+    },
+
+    // ------------------------------------------
+    // NUEVAS (D2, post-Etapa 10). Mismo criterio que arriba.
+    // ------------------------------------------
+
+    CERROJO: {
+        etiqueta: "CERROJO",
+        // El bloque bajo, compacto, de toda la vida: cede la pelota sin
+        // problema (no le importa no tenerla) a cambio de un área muy difícil
+        // de perforar. También tiene compatibilidad estructural con la
+        // densidad central (ver compatDefensa más abajo).
+        medio: -10, defensa: +16,
+        frecuenciaRival: 0.75   // concede muy pocas ocasiones limpias
+    },
+    LINEA_ADELANTADA: {
+        etiqueta: "LÍNEA ADELANTADA",
+        // Línea de fondo muy subida para achicar el campo y jugar en offside.
+        // Aprieta bien el medio, pero deja un espacio enorme a la espalda
+        // (su verdadero costo vive en la matriz, contra quien juega rápido y
+        // en profundidad).
+        medio: +6, defensa: -14,
+        frecuenciaRival: 0.85
+    },
+    REPLIEGUE_TRAS_PERDIDA: {
+        etiqueta: "REPLIEGUE TRAS PÉRDIDA",
+        // No presiona arriba: apenas se pierde la pelota, todo el equipo
+        // retrocede rápido a su posición para no dejar espacios sueltos. Los
+        // mods planos son chicos a propósito — su fuerza real es específica:
+        // corta las salidas rápidas del rival (ver matriz, especialmente
+        // contra CONTRAGOLPE y ATAQUE TOTAL).
+        medio: -2, defensa: +3,
+        frecuenciaRival: 0.92
     }
 };
 
@@ -131,11 +214,33 @@ export const MENTALIDADES_DEF = {
 //   fuerzaEfectiva(A,B) se llama para cada equipo cuando ataca, el sistema queda
 //   simétrico y cada enfrentamiento se cuenta una sola vez.
 
+// Ampliada en D2 (post-Etapa 10) de 4×3 a 8×6. Las 12 celdas originales
+// (columnas BLOQUE_COMPACTO/PRESION_ALTA/LINEA_MEDIA de las filas de
+// siempre) NO se tocan — ya estaban calibradas. Las celdas nuevas siguen la
+// misma lógica futbolística de las de al lado: quién le saca ventaja a quién
+// por cómo juega, no solo por los mods planos de arriba.
 export const MATRIZ_BASE = {
-    EQUIPO_RAPIDO: { BLOQUE_COMPACTO: 0.88, PRESION_ALTA: 1.18, LINEA_MEDIA: 1.00 },
-    JUEGO_ABIERTO: { BLOQUE_COMPACTO: 1.15, PRESION_ALTA: 0.94, LINEA_MEDIA: 1.00 },
-    POSESION:      { BLOQUE_COMPACTO: 0.92, PRESION_ALTA: 0.85, LINEA_MEDIA: 1.02 },
-    EQUILIBRADO:   { BLOQUE_COMPACTO: 1.00, PRESION_ALTA: 1.00, LINEA_MEDIA: 1.00 }
+    EQUIPO_RAPIDO:       { BLOQUE_COMPACTO: 0.88, PRESION_ALTA: 1.18, LINEA_MEDIA: 1.00, CERROJO: 0.92, LINEA_ADELANTADA: 1.22, REPLIEGUE_TRAS_PERDIDA: 0.88 },
+    JUEGO_ABIERTO:       { BLOQUE_COMPACTO: 1.15, PRESION_ALTA: 0.94, LINEA_MEDIA: 1.00, CERROJO: 0.90, LINEA_ADELANTADA: 0.95, REPLIEGUE_TRAS_PERDIDA: 1.03 },
+    POSESION:            { BLOQUE_COMPACTO: 0.92, PRESION_ALTA: 0.85, LINEA_MEDIA: 1.02, CERROJO: 0.88, LINEA_ADELANTADA: 0.95, REPLIEGUE_TRAS_PERDIDA: 1.00 },
+    EQUILIBRADO:         { BLOQUE_COMPACTO: 1.00, PRESION_ALTA: 1.00, LINEA_MEDIA: 1.00, CERROJO: 1.00, LINEA_ADELANTADA: 1.00, REPLIEGUE_TRAS_PERDIDA: 1.00 },
+    // Contragolpe necesita que el rival se haya adelantado: brutal contra la
+    // línea alta, flojo contra quien nunca sube (CERROJO) o contra quien
+    // justamente está diseñado para cortarle la salida rápida (REPLIEGUE).
+    CONTRAGOLPE:         { BLOQUE_COMPACTO: 0.90, PRESION_ALTA: 1.25, LINEA_MEDIA: 1.00, CERROJO: 0.92, LINEA_ADELANTADA: 1.28, REPLIEGUE_TRAS_PERDIDA: 0.82 },
+    // Juego directo se salta la presión jugando por arriba; pierde precisión
+    // contra un bloque compacto y ordenado.
+    JUEGO_DIRECTO:       { BLOQUE_COMPACTO: 0.92, PRESION_ALTA: 1.16, LINEA_MEDIA: 1.00, CERROJO: 0.88, LINEA_ADELANTADA: 1.18, REPLIEGUE_TRAS_PERDIDA: 1.00 },
+    // Ataque total es todo o nada: se frustra contra cualquier rival ordenado
+    // (bloque bajo o el repliegue que castiga justo ese desborde de gente
+    // hacia arriba) y solo rinde de verdad contra otro estilo igual de
+    // arriesgado (presión alta, línea adelantada).
+    ATAQUE_TOTAL:        { BLOQUE_COMPACTO: 0.85, PRESION_ALTA: 1.08, LINEA_MEDIA: 1.00, CERROJO: 0.80, LINEA_ADELANTADA: 1.10, REPLIEGUE_TRAS_PERDIDA: 0.82 },
+    // Desborde individual gana los 1v1: le cuesta contra una presión rápida
+    // que no lo deja encarar, le rinde contra una línea alta (velocidad de
+    // encare) y es parejo contra un bloque compacto (el desborde crea su
+    // propia ocasión aunque el área esté cerrada).
+    DESBORDE_INDIVIDUAL: { BLOQUE_COMPACTO: 1.08, PRESION_ALTA: 0.88, LINEA_MEDIA: 1.00, CERROJO: 0.95, LINEA_ADELANTADA: 1.12, REPLIEGUE_TRAS_PERDIDA: 0.95 }
 };
 
 // Escala del swing de la matriz. Con D=70 (calibrado en Etapa 2) la curva es
@@ -170,9 +275,10 @@ setMatrizEscala(MATRIZ_ESCALA);
 // Multiplicadores sobre el área correspondiente, según los ejes de la formación.
 // Fórmulas y rangos de §19.4 verbatim.
 
-// JUEGO ABIERTO necesita amplitud (rango 0.95–1.13).
+// JUEGO ABIERTO y DESBORDE INDIVIDUAL necesitan amplitud (D2: el desborde 1v1
+// también vive de tener banda para encarar, mismo rango que JUEGO ABIERTO).
 export function compatAtaque(claveOfensiva, formacion) {
-    if (claveOfensiva === "JUEGO_ABIERTO") {
+    if (claveOfensiva === "JUEGO_ABIERTO" || claveOfensiva === "DESBORDE_INDIVIDUAL") {
         return 0.75 + (formacion.amplitud / 100) * 0.5;
     }
     return 1.0;
@@ -186,10 +292,15 @@ export function compatMedio(claveDefensiva, formacion) {
     return 1.0;
 }
 
-// BLOQUE COMPACTO con poca densidad central es un contrasentido (rango 0.99–1.09).
+// BLOQUE COMPACTO con poca densidad central es un contrasentido (rango
+// 0.99–1.09). CERROJO (D2) necesita densidad central TODAVÍA más que BLOQUE
+// COMPACTO —vive de tener gente atrás bloqueando el área— (rango 0.95–1.19).
 export function compatDefensa(claveDefensiva, formacion) {
     if (claveDefensiva === "BLOQUE_COMPACTO") {
         return 0.85 + (formacion.densidadCentral / 100) * 0.3;
+    }
+    if (claveDefensiva === "CERROJO") {
+        return 0.75 + (formacion.densidadCentral / 100) * 0.4;
     }
     return 1.0;
 }
