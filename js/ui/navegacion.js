@@ -17,6 +17,7 @@ import { renderInventario } from "./paquetes.js";
 import { renderTienda } from "./tienda.js";
 import { renderTorneos } from "./torneos.js";
 import { renderAmistosos } from "./amistosos.js";
+import { renderManual } from "./manual.js";
 
 
 // ==========================================
@@ -85,6 +86,10 @@ export function showScreen(screenId) {
 
     if (screenId === "amistososScreen") {
         renderAmistosos();
+    }
+
+    if (screenId === "manualScreen") {
+        renderManual();
     }
 }
 

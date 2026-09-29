@@ -2326,6 +2326,68 @@ main {
     text-align: center;
 }
 
+.manual-link {
+    grid-column: 1 / -1;
+    margin-top: 8px !important;
+}
+
+/* =====================================
+   MANUAL DE MENTALIDADES (D2)
+===================================== */
+
+.manual-intro {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 12px 0 20px;
+}
+
+.manual-seccion {
+    color: var(--green);
+    font-size: 14px;
+    margin: 20px 0 12px;
+}
+
+.manual-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+}
+
+.manual-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.manual-card h4 {
+    font-size: 14px;
+    margin-bottom: 6px;
+}
+
+.manual-resumen {
+    color: var(--muted);
+    font-size: 12px;
+    font-style: italic;
+    margin-bottom: 10px;
+}
+
+.manual-linea {
+    font-size: 12px;
+    line-height: 1.5;
+    margin-bottom: 6px;
+}
+
+.manual-mejora { color: var(--green); }
+.manual-empeora { color: #ff8585; }
+.manual-tip {
+    color: var(--muted);
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border);
+}
+
 /* Análisis táctico post-partido (§19.5). */
 .resultado-tactica {
     margin-top: 18px;

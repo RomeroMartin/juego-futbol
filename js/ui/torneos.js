@@ -24,6 +24,7 @@ import {
 } from "../config/mentalidades.js";
 import { ECONOMIA } from "../config/economia.js";
 import { categoriaJugador } from "../core/formulas.js";
+import { abrirManual } from "./manual.js";
 import { simularPartido } from "../core/motor.js";
 import { MOTOR } from "../config/motor.js";
 import { reproducirRelatoExterno } from "./partido.js";
@@ -346,6 +347,8 @@ function pintarArmado(c, t, uid) {
 
     const btnMent = document.getElementById("torneoGuardarMent");
     if (btnMent) btnMent.addEventListener("click", () => onGuardarMentalidad(t.id));
+    const btnManual = document.getElementById("torneoAbrirManual");
+    if (btnManual) btnManual.addEventListener("click", () => abrirManual("torneosScreen"));
 }
 
 
@@ -633,6 +636,8 @@ function pintarCompeticion(c, t, uid) {
     if (btnAv) btnAv.addEventListener("click", () => onAvanzarFecha(t.id));
     const btnMent = document.getElementById("torneoGuardarMent");
     if (btnMent) btnMent.addEventListener("click", () => onGuardarMentalidad(t.id));
+    const btnManual = document.getElementById("torneoAbrirManual");
+    if (btnManual) btnManual.addEventListener("click", () => abrirManual("torneosScreen"));
     if (!finalizado) {
         enganchesArmado(t, uid, abierta);
         const btnCopiar = document.getElementById("torneoCopiarIA");
@@ -759,6 +764,7 @@ function pintarSelectorMentalidad() {
                 <label>Defensiva<select id="mentDef">${opsDef}</select></label>
             </div>
             <button id="torneoGuardarMent" class="secondary-button">Guardar mentalidad</button>
+            <button id="torneoAbrirManual" class="secondary-button manual-link">📖 Manual de mentalidades</button>
         </div>`;
 }
 

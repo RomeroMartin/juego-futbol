@@ -731,7 +731,7 @@ Lo que quede de acá en más es mejora sobre lo ya construido, no plan pendiente
 
 ---
 
-## 14. Plan grande post-plan (en curso) — Grupos A, B, C y D1 hechos
+## 14. Plan grande post-plan (en curso) — Grupos A, B, C y D hechos
 
 El grupo pidió una lista grande de mejoras nuevas (no forman parte de ningún
 plan previo). Se agruparon por riesgo/tamaño y se van construyendo en tandas
@@ -748,18 +748,17 @@ saber cuál es el estado real.
 - **Grupo C** ✅ hecho (esta sección) — torneos ida y vuelta al crearlos, con
   la localía pesando (+3 Ataque/Medio al local, -1 Ataque al visitante —
   confirmado con el usuario).
-- **Grupo D** — toca las fórmulas centrales:
-  - **D1** ✅ hecho (esta sección) — penalización por jugar fuera de posición
+- **Grupo D** ✅ hecho — toca las fórmulas centrales:
+  - **D1** ✅ hecho — penalización por jugar fuera de posición
     dentro de la línea (-15% categoría equivocada, -8% mismo tipo pero lado
     equivocado — confirmado con el usuario). No necesitó re-correr el script
     de balance (§33): no toca D/FACTOR_GOL/MATRIZ_CONTRAS, ver detalle abajo.
-  - **D2** ⏳ pendiente — 4 mentalidades ofensivas nuevas (Contragolpe, Juego
-    Directo, Ataque Total, Desborde Individual) + 3 defensivas nuevas
-    (Cerrojo, Línea Adelantada, Repliegue tras Pérdida) — todas confirmadas
-    con el usuario, con sus descripciones en criollo ya acordadas para el
-    manual en el juego (pantalla propia, confirmado). Esta sí necesita
-    re-correr `scripts/simular-balance.mjs` para calibrar la matriz de
-    contras ampliada.
+  - **D2** ✅ hecho (esta sección) — 4 mentalidades ofensivas nuevas
+    (Contragolpe, Juego Directo, Ataque Total, Desborde Individual) + 3
+    defensivas nuevas (Cerrojo, Línea Adelantada, Repliegue tras Pérdida),
+    matriz de contras ampliada de 4×3 a 8×6 y recalibrada con
+    `scripts/simular-balance.mjs`, + manual de mentalidades en pantalla
+    propia dentro del juego.
 - **Grupo E** ⏳ pendiente — subsistemas nuevos del motor, comparten
   infraestructura entre sí:
   - Banco de suplentes (solo torneos, no vs IA ni amistosos — confirmado).
@@ -989,3 +988,87 @@ helper del test para que arme el equipo con `conCategorias`, como haría
    imposible ganar (el principio rector: nunca por encima del 87%).
 6. En un torneo, armar el equipo con algún jugador fuera de su lado en la
    pantalla de armado (`pintarCancha`) → debe verse el mismo aviso ahí.
+
+### Grupo D2 — hecho (esta sesión)
+**7 mentalidades nuevas (4 ofensivas + 3 defensivas) + matriz de contras
+ampliada de 4×3 a 8×6 + manual en pantalla propia.**
+
+- `js/config/mentalidades.js` (+ copia `functions/juego/config/
+  mentalidades.js`, verificadas idénticas con `diff`):
+  - `MENTALIDADES_OF`: agregadas `CONTRAGOLPE`, `JUEGO_DIRECTO`,
+    `ATAQUE_TOTAL`, `DESBORDE_INDIVIDUAL`.
+  - `MENTALIDADES_DEF`: agregadas `CERROJO`, `LINEA_ADELANTADA`,
+    `REPLIEGUE_TRAS_PERDIDA`.
+  - `MATRIZ_BASE`: de 4×3 (12 celdas) a 8×6 (48). Las 12 originales no se
+    tocaron. `setMatrizEscala` (ya genérico, itera `MATRIZ_BASE`) no
+    necesitó cambios.
+  - `compatAtaque`: DESBORDE_INDIVIDUAL suma la misma regla de amplitud que
+    JUEGO_ABIERTO (necesita banda para encarar).
+  - `compatDefensa`: CERROJO suma una regla de densidad central (más
+    exigente que BLOQUE_COMPACTO — vive de tener gente atrás).
+  - `CLAVES_OFENSIVA`/`CLAVES_DEFENSIVA` son `Object.keys(...)`, así que
+    **no hizo falta tocar ningún otro archivo** para que las 7 mentalidades
+    nuevas aparezcan en los selectores (`js/ui/equipo.js`,
+    `js/ui/torneos.js`) ni para que el rival IA (`js/core/rivalIA.js`) las
+    elija — todo ese código ya iteraba las listas dinámicamente.
+- **Calibración** (`scripts/simular-balance.mjs`, criterio igual al de
+  Etapa 5 — ninguna mentalidad > 40% de uso óptimo): el primer punto de
+  partida de `ATAQUE_TOTAL` (ataque +14, medio +4) dominaba con 45-46% de
+  uso óptimo — se bajó a ataque +9, medio +2 y se endureció su fila de
+  matriz (peor contra BLOQUE_COMPACTO/CERROJO/REPLIEGUE). `CONTRAGOLPE`
+  arrancó con frecuencia ×0.75 y quedaba casi sin uso (0-1%) — se suavizó
+  a ×0.90 y se subió su calidad de ocasión a ×1.40 para compensar (subió a
+  ~4% de uso óptimo entre las mentalidades con efecto; sigue siendo la más
+  situacional a propósito — es fuerte específicamente contra rivales que
+  se adelantan, floja contra los que nunca suben). Resultado final: máximo
+  ofensivo 24-30%, máximo defensivo 24-27% (ambos muy por debajo del 40%),
+  swing táctico total ~22 puntos de Fuerza Efectiva (dentro del objetivo
+  ±10-12 de §5), y el techo de §33 (≤87% de probabilidad del favorito)
+  sigue intacto porque no depende de la matriz de mentalidad.
+- `js/ui/manual.js` (nuevo): pantalla propia con las 14 mentalidades (7
+  originales + 7 nuevas), cada una con resumen, "Mejora", "Empeora" y un
+  tip de a quién le gana/pierde — sin números, en criollo.
+  `abrirManual(origen)` recuerda desde qué pantalla se abrió (equipo propio
+  o torneo) para volver ahí, no siempre al mismo lugar.
+- `index.html`: nueva sección `manualScreen`; botón "📖 Manual de
+  mentalidades" en el armado normal (`teamScreen`) y en el selector de
+  mentalidad de torneos.
+- `js/ui/navegacion.js`: `showScreen("manualScreen")` llama a
+  `renderManual()`.
+- `js/ui/equipo.js`: `DESC_OFENSIVA`/`DESC_DEFENSIVA` (descripciones cortas
+  del selector) con las 7 entradas nuevas; botón del manual conectado en
+  `initTacticaEquipo`.
+- `js/ui/torneos.js`: botón del manual conectado en los dos lugares donde
+  se pinta el selector de mentalidad de torneo (armado y competencia).
+- `js/main.js`: `initManual()` agregado a `arrancarJuegoUnaVez`.
+- `css/estilos.css`: `.manual-link`, `.manual-intro`, `.manual-seccion`,
+  `.manual-grid`, `.manual-card` y estilos de línea (`.manual-mejora` verde,
+  `.manual-empeora` roja, `.manual-tip`).
+- `docs/Futbol_Figuritas_Proyecto_v3.md`: nueva §19.6 con los mods, la
+  matriz ampliada y la nota de diseño (el doc original decía "que lo
+  descubra jugando, no leyendo un manual" — el grupo pidió lo contrario).
+
+**Decisión técnica a recordar:** el sistema ya estaba armado para esto —
+`CLAVES_OFENSIVA`/`CLAVES_DEFENSIVA` se derivan de `Object.keys(...)` en vez
+de estar hardcodeadas, así que agregar mentalidades nuevas fue solo tocar
+`config/mentalidades.js`. Ningún otro archivo del motor, la UI de selección
+o el rival IA necesitó cambios de código — la única superficie nueva de
+verdad fue el manual.
+
+### Cómo testear Grupo D2
+1. `firebase deploy` (los mods de mentalidad y la matriz corren tanto
+   cliente como servidor — Cloud Functions cambiaron).
+2. `node scripts/test-formaciones-mentalidades.mjs`,
+   `node scripts/test-rival-ia.mjs`, `node scripts/test-relato.mjs` y
+   `node scripts/simular-balance.mjs` — los tres primeros deben dar
+   `TODOS LOS TESTS OK`; el último debe mostrar "máximo ofensivo" y "máximo
+   defensivo" con ✓ (≤40%).
+3. En el armado de equipo, abrir los selectores de mentalidad ofensiva y
+   defensiva → deben aparecer las 7 opciones nuevas junto a las de siempre.
+4. Tocar "📖 Manual de mentalidades" → se abre la pantalla nueva con las 14
+   tarjetas; "← Volver" debe volver al armado de equipo.
+5. Desde un torneo, en el selector de mentalidad de la fecha, tocar el
+   mismo botón → debe volver al torneo (no al armado normal) al cerrar.
+6. Jugar un partido vs IA eligiendo una mentalidad nueva (ej. Contragolpe)
+   y confirmar que el partido corre sin errores y el resumen post-partido
+   muestra el análisis táctico con la etiqueta correcta.
