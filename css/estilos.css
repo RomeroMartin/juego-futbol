@@ -1074,6 +1074,19 @@ main {
 }
 
 
+.slot-fuera-posicion {
+
+    font-size: 7px;
+
+    color: #ffb340;
+
+    margin-top: 3px;
+
+    line-height: 1.2;
+
+}
+
+
 
 /* =====================================
    TEAM STATS
@@ -3057,6 +3070,13 @@ main {
 
 .torneo-slot.ocupado strong { font-size: 12px; line-height: 1.2; }
 .torneo-slot.ocupado small { font-size: 10px; color: var(--muted); }
+
+.torneo-slot-aviso {
+    display: block;
+    color: #ffb340 !important;
+    font-size: 9px !important;
+    margin-top: 2px;
+}
 
 .torneo-slot.vacio {
     background: transparent;

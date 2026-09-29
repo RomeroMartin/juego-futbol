@@ -14,6 +14,7 @@ import { estado } from "../core/estado.js";
 import { JUGADORES } from "../data/jugadores.js";
 import { MENTALIDADES_OF, MENTALIDADES_DEF } from "../config/mentalidades.js";
 import { simularPartido } from "../core/motor.js";
+import { conCategorias } from "../config/formaciones.js";
 import { reproducirRelatoExterno, construirEquipoUsuario } from "./partido.js";
 import { showScreen } from "./navegacion.js";
 import {
@@ -295,15 +296,19 @@ function pintarCancelado(c, m) {
 
 // Arma, desde los ids guardados en el desafío, el equipo que consume el motor
 // (objetos completos, con `id` para etiquetar los eventos) y los ids para el
-// relato. Mismo criterio que torneos.js (equipoTorneoAMotor).
+// relato. Mismo criterio que torneos.js (equipoTorneoAMotor). conCategorias
+// (D1, post-Etapa 10) adosa la categoría esperada de sub-posición por ÍNDICE
+// — mismo orden con el que el servidor armó estos ids originalmente (el de
+// slotsDeFormacion) — o el relato re-simulado no le va a coincidir al
+// resultado real.
 function equipoIdsAMotor(eqIds, id) {
     return {
         motor: {
             id,
             arquero: CATALOGO.get(eqIds.arquero),
-            defensores: eqIds.defensores.map(i => CATALOGO.get(i)),
-            medios: eqIds.medios.map(i => CATALOGO.get(i)),
-            delanteros: eqIds.delanteros.map(i => CATALOGO.get(i)),
+            defensores: conCategorias(eqIds.defensores.map(i => CATALOGO.get(i)), "DEF"),
+            medios:     conCategorias(eqIds.medios.map(i => CATALOGO.get(i)), "MED"),
+            delanteros: conCategorias(eqIds.delanteros.map(i => CATALOGO.get(i)), "DEL"),
             formacion: eqIds.formacion,
             mentalidadOfensiva: eqIds.mentalidadOfensiva,
             mentalidadDefensiva: eqIds.mentalidadDefensiva

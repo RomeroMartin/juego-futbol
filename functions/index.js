@@ -828,13 +828,18 @@ function xiCompleto(equipoDoc) {
 
 // Arma el equipo en el formato que espera el motor a partir del doc del equipo
 // del torneo (xi: slot → playerId).
+// Itera slotsDeFormacion (orden determinista) en vez de Object.entries(xi):
+// no depende de que Firestore preserve el orden de inserción del mapa, y de
+// paso permite adosar la categoría esperada de sub-posición (D1, post-Etapa
+// 10) por el slot EXACTO, no por índice de aparición.
 function equipoMotorDesdeDoc(equipoDoc, id) {
-    const posDeSlot = slotsPorPosicion(equipoDoc.formacion);
     const grupos = { POR: [], DEF: [], MED: [], DEL: [] };
-    for (const [slot, pid] of Object.entries(equipoDoc.xi || {})) {
+    for (const { slot, position, categoria } of slotsDeFormacion(equipoDoc.formacion)) {
+        const pid = (equipoDoc.xi || {})[slot];
         if (pid == null) continue;
         const pl = CATALOGO.get(pid);
-        if (pl && grupos[posDeSlot[slot]]) grupos[posDeSlot[slot]].push(pl);
+        if (!pl) continue;
+        grupos[position].push(position === "POR" ? pl : { ...pl, _categoriaSlot: categoria });
     }
     return {
         id,
@@ -1383,12 +1388,15 @@ async function generarCodigoDesafio() {
 function construirEquipoDesdeTeam(teamDoc, idsPoseidos, uid) {
     if (!teamDoc || !teamDoc.formacion) return null;
     const grupos = { POR: null, DEF: [], MED: [], DEL: [] };
-    for (const { slot, position } of slotsDeFormacion(teamDoc.formacion)) {
+    for (const { slot, position, categoria } of slotsDeFormacion(teamDoc.formacion)) {
         const pid = teamDoc.team?.[slot];
         if (pid == null || !idsPoseidos.has(pid)) return null;
         const pl = CATALOGO.get(pid);
         if (!pl) return null;
-        if (position === "POR") grupos.POR = pl; else grupos[position].push(pl);
+        // Categoría esperada de sub-posición (D1, post-Etapa 10): decide el
+        // partido real acá, tiene que coincidir con lo que hace el cliente.
+        if (position === "POR") grupos.POR = pl;
+        else grupos[position].push({ ...pl, _categoriaSlot: categoria });
     }
     if (!grupos.POR) return null;
     return {

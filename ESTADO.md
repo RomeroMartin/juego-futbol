@@ -731,7 +731,7 @@ Lo que quede de acá en más es mejora sobre lo ya construido, no plan pendiente
 
 ---
 
-## 14. Plan grande post-plan (en curso) — Grupos A, B y C hechos
+## 14. Plan grande post-plan (en curso) — Grupos A, B, C y D1 hechos
 
 El grupo pidió una lista grande de mejoras nuevas (no forman parte de ningún
 plan previo). Se agruparon por riesgo/tamaño y se van construyendo en tandas
@@ -748,16 +748,18 @@ saber cuál es el estado real.
 - **Grupo C** ✅ hecho (esta sección) — torneos ida y vuelta al crearlos, con
   la localía pesando (+3 Ataque/Medio al local, -1 Ataque al visitante —
   confirmado con el usuario).
-- **Grupo D** ⏳ pendiente — toca las fórmulas centrales, necesita re-correr
-  el script de balance (§33) después:
-  - **D1**: penalización por jugar fuera de posición natural (-15% categoría
-    equivocada dentro de la línea — central/lateral, central/banda —, -8%
-    mismo tipo pero lado equivocado — confirmado con el usuario).
-  - **D2**: 4 mentalidades ofensivas nuevas (Contragolpe, Juego Directo,
-    Ataque Total, Desborde Individual) + 3 defensivas nuevas (Cerrojo, Línea
-    Adelantada, Repliegue tras Pérdida) — todas confirmadas con el usuario,
-    con sus descripciones en criollo ya acordadas para el manual en el juego
-    (pantalla propia, confirmado).
+- **Grupo D** — toca las fórmulas centrales:
+  - **D1** ✅ hecho (esta sección) — penalización por jugar fuera de posición
+    dentro de la línea (-15% categoría equivocada, -8% mismo tipo pero lado
+    equivocado — confirmado con el usuario). No necesitó re-correr el script
+    de balance (§33): no toca D/FACTOR_GOL/MATRIZ_CONTRAS, ver detalle abajo.
+  - **D2** ⏳ pendiente — 4 mentalidades ofensivas nuevas (Contragolpe, Juego
+    Directo, Ataque Total, Desborde Individual) + 3 defensivas nuevas
+    (Cerrojo, Línea Adelantada, Repliegue tras Pérdida) — todas confirmadas
+    con el usuario, con sus descripciones en criollo ya acordadas para el
+    manual en el juego (pantalla propia, confirmado). Esta sí necesita
+    re-correr `scripts/simular-balance.mjs` para calibrar la matriz de
+    contras ampliada.
 - **Grupo E** ⏳ pendiente — subsistemas nuevos del motor, comparten
   infraestructura entre sí:
   - Banco de suplentes (solo torneos, no vs IA ni amistosos — confirmado).
@@ -887,3 +889,103 @@ por `torneo.dobleVuelta` en ambos call sites, usando la misma constante
    antes (sin bono de localía).
 5. Ver la sala y la pantalla de competencia del torneo → debe aparecer
    "· Ida y vuelta" en el encabezado.
+
+### Grupo D1 — hecho (esta sesión)
+**Penalización por jugar fuera de posición dentro de la línea (§18.1).**
+Cada slot de una formación ahora tiene, además de POR/DEF/MED/DEL, una
+categoría de sub-posición: CENTRAL, IZQUIERDA o DERECHA (DEF y MED comparten
+patrón por cantidad de jugadores en la línea — una línea de 3 es toda
+central, de 4 o 5 tiene un lateral/banda de cada lado; DEL tiene patrón
+propio — 1 y 2 son todos centrales, 3 es punta-centro-punta). Un jugador de
+categoría exacta no pierde nada; mismo tipo pero lado cambiado (ej. lateral
+derecho de izquierdo) pierde 8%; tipo equivocado (central de lateral/banda o
+viceversa) pierde 15%. Se aplica a la Fuerza Efectiva (decide el partido),
+NUNCA a la Fuerza Equipo (se muestra antes de jugar, calibra al rival IA).
+
+Alcance decidido con el usuario: la penalización aplica también al rival IA
+(no solo a equipos humanos) — para que no fuera puro ruido aleatorio, la IA
+ahora arma su plantel "a propósito" por categoría (elige, para cada slot, un
+jugador cuyo `detailedPosition` encaje). Como resultado, la IA prácticamente
+nunca dispara la penalización sobre sí misma (arma bien, como haría un buen
+armador), así que **no hizo falta re-correr el script de balance** — la
+Fuerza Efectiva del rival IA no cambió respecto a antes de D1.
+
+- `js/config/formaciones.js` (+ copia `functions/juego/config/formaciones.js`,
+  verificadas idénticas con `diff`): tabla de categorías por línea/cantidad;
+  `slotsDeFormacion` ahora devuelve también `categoria` por slot;
+  `categoriasLinea(position, cantidad)` (exportada, la usa `rivalIA.js`);
+  `conCategorias(jugadores, position)` (exportada): adosa la categoría
+  esperada por ÍNDICE a un array plano ya armado (jugadores rehidratados
+  desde ids guardados) — asume el mismo orden que produce `slotsDeFormacion`,
+  que es como TODOS los armadores de equipo del juego arman esos arrays.
+- `js/core/formulas.js` (+ copia `functions/juego/core/formulas.js`,
+  idénticas): `categoriaJugador(jugador)` (mapea `detailedPosition` a
+  categoría), `factorPosicion(jugador)` (lee `jugador._categoriaSlot` —la
+  esperada— vs `categoriaJugador(jugador)` —la real— y devuelve 1 / 0.92 /
+  0.85), `calcularAtaqueTactico`/`calcularMediocampoTactico`/
+  `calcularDefensaTactico` (variantes de `calcularAtaque`/etc. QUE SÍ
+  penalizan — las usa `fuerzaEfectiva`; las de siempre, sin penalizar, siguen
+  siendo las que usa `fuerzaEquipo`).
+- `js/core/motor.js` (+ copia `functions/juego/core/motor.js`, idénticas):
+  `fuerzaEfectiva` usa las variantes `*Tactico` en vez de las planas.
+- **Todo lugar que arma un equipo para el motor** necesitó adosar
+  `_categoriaSlot` a cada jugador (o la Fuerza Efectiva no tendría de dónde
+  leer la categoría esperada):
+  - `js/ui/partido.js` (`construirEquipoUsuario`, vs IA — tu propio equipo) y
+    `functions/index.js` (`construirEquipoDesdeTeam`, amistosos): iteran
+    `slotsDeFormacion` directo, adosan por el slot exacto.
+  - `js/ui/torneos.js` (`equipoTorneoAMotor`) y `functions/index.js`
+    (`equipoMotorDesdeDoc`): **se refactorizaron** para iterar
+    `slotsDeFormacion` y leer `equipoDoc.xi[slot]` en vez de
+    `Object.entries(equipoDoc.xi)` — no dependen de que Firestore preserve el
+    orden de inserción del mapa, y de paso adosan la categoría por el slot
+    exacto.
+  - `js/core/partido.js` (`equipoDesdeIds`, re-verificación cliente),
+    `functions/juego/core/verificar.js` (`equipoDesdeIds`, re-verificación
+    servidor) y `js/ui/amistosos.js` (`equipoIdsAMotor`): rehidratan equipos
+    desde arrays planos de ids (sin slot) — usan `conCategorias` por ÍNDICE.
+  - `js/core/rivalIA.js`: `POOL_CAT` (pool de jugadores por posición +
+    categoría, derivado de `detailedPosition`); `elegirUnoCerca`/
+    `elegirLineaCerca` reemplazan a `elegirCerca` — arman cada línea slot por
+    slot, por categoría, con un `Set` de excluidos para no repetir jugador;
+    `construirCandidato` ahora recibe la `formacion` (no solo los `slots`) y
+    arma con las categorías reales de esa formación.
+- `js/ui/equipo.js` y `js/ui/torneos.js` (`pintarCancha`): aviso visual "⚠
+  Fuera de posición (-15%)" / "⚠ Lado cambiado (-8%)" en el slot cuando el
+  jugador puesto ahí no es de la categoría esperada.
+- `css/estilos.css`: `.slot-fuera-posicion` (armado normal) y
+  `.torneo-slot-aviso` (armado de torneo).
+- `docs/Futbol_Figuritas_Proyecto_v3.md`: nueva §18.1.
+
+**Fix de reproducibilidad encontrado en el propio testeo:** `equipoMotorDesdeDoc`
+(servidor) y `equipoTorneoAMotor` (cliente) armaban los arrays de jugadores
+iterando `Object.entries(equipoDoc.xi)`, cuyo orden depende de que Firestore
+preserve el orden de inserción del mapa — no garantizado. Se cambiaron para
+iterar siempre `slotsDeFormacion` (orden determinista) y leer `xi[slot]`
+directo. De paso, `scripts/test-rival-ia.mjs` tenía un helper de equipo de
+prueba que armaba jugadores sin pasar por ningún armador real (sin
+formación, sin categoría adosada) — al agregar D1 la re-verificación por
+semilla (test 5) empezó a fallar porque la reconstrucción desde ids SÍ
+adosaba categoría por índice y la simulación original no. Se corrigió el
+helper del test para que arme el equipo con `conCategorias`, como haría
+`construirEquipoUsuario` en un 4-3-3 real.
+
+### Cómo testear Grupo D1
+1. `firebase deploy` (Cloud Functions modificadas: `construirEquipoDesdeTeam`
+   y `equipoMotorDesdeDoc` cambiaron de forma, aunque el comportamiento hacia
+   afuera es el mismo salvo la nueva penalización).
+2. `node scripts/test-formaciones-mentalidades.mjs`,
+   `node scripts/test-rival-ia.mjs` y `node scripts/test-relato.mjs` — deben
+   dar `TODOS LOS TESTS OK` (la re-verificación por semilla del test 5 de
+   `test-rival-ia.mjs` es la que ejercita justo este mecanismo).
+3. En el armador de equipo (Competir → Armar Equipo), poner a propósito un
+   defensor central en un slot de lateral → debe aparecer el aviso "⚠ Fuera
+   de posición" en el slot.
+4. Poner un lateral derecho en el slot de lateral izquierdo → debe aparecer
+   "⚠ Lado cambiado" (penalización menor).
+5. Jugar un partido vs IA con un equipo bien armado (todos en su categoría) y
+   comparar informalmente contra el mismo equipo con 2-3 jugadores mal
+   puestos — debería notarse un peor rendimiento, sin que se vuelva
+   imposible ganar (el principio rector: nunca por encima del 87%).
+6. En un torneo, armar el equipo con algún jugador fuera de su lado en la
+   pantalla de armado (`pintarCancha`) → debe verse el mismo aviso ahí.

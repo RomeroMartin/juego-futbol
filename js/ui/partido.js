@@ -62,11 +62,13 @@ export function construirEquipoUsuario() {
 
     const destino = { POR: null, DEF: "defensores", MED: "medios", DEL: "delanteros" };
 
-    for (const { slot, position } of slotsDeFormacion(estado.formacion)) {
+    for (const { slot, position, categoria } of slotsDeFormacion(estado.formacion)) {
         const jugador = jugadorDe(slot);
         if (!jugador) return null;   // XI incompleto: no se puede competir (§17.2).
         if (position === "POR") equipo.arquero = jugador;
-        else equipo[destino[position]].push(jugador);
+        // Clon con la categoría esperada de sub-posición (D1) para que
+        // fuerzaEfectiva pueda penalizar si no coincide con la real.
+        else equipo[destino[position]].push({ ...jugador, _categoriaSlot: categoria });
     }
 
     if (!equipo.arquero) return null;

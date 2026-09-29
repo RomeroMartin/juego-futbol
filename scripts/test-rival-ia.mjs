@@ -16,6 +16,7 @@ import { generarRivalIA, DIFICULTADES } from "../js/core/rivalIA.js";
 import { jugarPartido, reVerificar } from "../js/core/partido.js";
 import { PREFIJOS, NUCLEOS, NUCLEOS_PLURALES } from "../js/data/nombresRival.js";
 import { fuerzaEquipo } from "../js/core/motor.js";
+import { conCategorias } from "../js/config/formaciones.js";
 
 let fallos = 0;
 const ok = (cond, msg) => { console.log(`  ${cond ? "✓" : "✗"} ${msg}`); if (!cond) fallos++; };
@@ -33,12 +34,17 @@ const near = (cat, niv, n) => {
     for (let i = 0; i < n; i++) o.push(p.splice(Math.floor(Math.random() * p.length), 1)[0]);
     return o;
 };
+// conCategorias (D1, post-Etapa 10) adosa la categoría esperada de
+// sub-posición por índice, como haría construirEquipoUsuario con un 4-3-3
+// real — si no, la re-verificación por ids (que SIEMPRE la adosa al
+// reconstruir) no coincidiría con esta primera simulación.
 const equipoUsuario = (niv) => ({
     id: "USUARIO",
+    formacion: "4-3-3",
     arquero: near("POR", niv, 1)[0],
-    defensores: near("DEF", niv, 4),
-    medios: near("MED", niv, 3),
-    delanteros: near("DEL", niv, 3)
+    defensores: conCategorias(near("DEF", niv, 4), "DEF"),
+    medios: conCategorias(near("MED", niv, 3), "MED"),
+    delanteros: conCategorias(near("DEL", niv, 3), "DEL")
 });
 const media = a => (a.ataque + a.medio + a.defensa) / 3;
 const idsXI = e => [e.arquero.id, ...e.defensores.map(j => j.id), ...e.medios.map(j => j.id), ...e.delanteros.map(j => j.id)].sort((a, b) => a - b).join(",");

@@ -107,6 +107,70 @@ export function calcularDefensa(defensores, arquero) {
 
 
 // ==========================================
+// POSICIÓN FUERA DE LUGAR (§18 ampliado, D1, post-Etapa 10)
+// ==========================================
+//
+// Penaliza jugar a un jugador en una sub-posición que no es la suya dentro de
+// su línea (ej. un lateral derecho de lateral izquierdo, o un volante central
+// abierto por una banda). Usa `detailedPosition` (ya en el dataset desde la
+// Etapa 2, EA FC). El slot ESPERADO viaja en `jugador._categoriaSlot`,
+// adosado al armar el equipo para el motor (ver config/formaciones.js →
+// slotsDeFormacion/conCategorias, y rivalIA.js para el rival); si no está
+// presente (arquero, o un jugador armado sin esa info) no hay penalización.
+const CATEGORIA_POR_DETALLE = {
+    CB: "CENTRAL", LB: "IZQUIERDA", RB: "DERECHA",
+    CDM: "CENTRAL", CM: "CENTRAL", CAM: "CENTRAL", LM: "IZQUIERDA", RM: "DERECHA",
+    ST: "CENTRAL", LW: "IZQUIERDA", RW: "DERECHA"
+};
+
+export function categoriaJugador(jugador) {
+    return CATEGORIA_POR_DETALLE[jugador.detailedPosition] || null;
+}
+
+// -15% si el TIPO no coincide (central en un slot lateral/banda o viceversa,
+// y viceversa), -8% si el tipo coincide pero el LADO no (ej. lateral derecho
+// de izquierdo), 0% si coincide exacto. Confirmado con el usuario.
+const PENALIZACION_TIPO = 0.85;
+const PENALIZACION_LADO = 0.92;
+
+export function factorPosicion(jugador) {
+    const esperada = jugador._categoriaSlot;
+    if (!esperada) return 1;
+    const real = categoriaJugador(jugador);
+    if (!real || real === esperada) return 1;
+    const esCentral = (c) => c === "CENTRAL";
+    if (esCentral(real) !== esCentral(esperada)) return PENALIZACION_TIPO;
+    return PENALIZACION_LADO;
+}
+
+function promedioPonderadoPorPosicion(jugadores, scoreFn) {
+    const suma = jugadores.reduce((acc, j) => acc + scoreFn(j) * factorPosicion(j), 0);
+    return suma / jugadores.length;
+}
+
+// Variantes de las stats de área CON la penalización de fuera de posición
+// (D1): las usa fuerzaEfectiva (lo que decide el partido — la ubicación en
+// la cancha es una decisión táctica). calcularAtaque/Mediocampo/Defensa de
+// arriba NO se tocan y siguen sin penalizar: las usa fuerzaEquipo, la
+// calidad de plantel "cruda" que se muestra antes de jugar y calibra al
+// rival IA (§20.0) — tiene que quedar independiente de dónde se ubique a
+// cada jugador, igual que ya es independiente de la formación y la mentalidad.
+export function calcularAtaqueTactico(delanteros) {
+    return promedioPonderadoPorPosicion(delanteros, scoreAtaque);
+}
+
+export function calcularMediocampoTactico(medios) {
+    return promedioPonderadoPorPosicion(medios, scoreMedio);
+}
+
+export function calcularDefensaTactico(defensores, arquero) {
+    const lineaDefensiva = promedioPonderadoPorPosicion(defensores, scoreDefensor);
+    return lineaDefensiva * PESO_LINEA_DEFENSIVA
+         + scoreArquero(arquero) * PESO_ARQUERO_EN_DEFENSA;
+}
+
+
+// ==========================================
 // VALORACIÓN (§20.4)
 // ==========================================
 //
