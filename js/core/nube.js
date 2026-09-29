@@ -193,9 +193,11 @@ export function escucharTorneo(id, cb) {
     );
 }
 
-// Crea un torneo. Devuelve { torneoId, codigoInvitacion }.
-export async function crearTorneoNube(nombre) {
-    const res = await llamar("crearTorneo")({ nombre });
+// Crea un torneo. `idaYVuelta` (§40): false = ida sola (default), true = ida
+// y vuelta (con localía, ver config/motor.js → LOCALIA). Devuelve
+// { torneoId, codigoInvitacion }.
+export async function crearTorneoNube(nombre, idaYVuelta = false) {
+    const res = await llamar("crearTorneo")({ nombre, idaYVuelta });
     return res.data;
 }
 

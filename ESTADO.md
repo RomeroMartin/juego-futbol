@@ -731,7 +731,7 @@ Lo que quede de acá en más es mejora sobre lo ya construido, no plan pendiente
 
 ---
 
-## 14. Plan grande post-plan (en curso) — Grupos A y B hechos
+## 14. Plan grande post-plan (en curso) — Grupos A, B y C hechos
 
 El grupo pidió una lista grande de mejoras nuevas (no forman parte de ningún
 plan previo). Se agruparon por riesgo/tamaño y se van construyendo en tandas
@@ -745,9 +745,9 @@ saber cuál es el estado real.
   posición natural detallada (`detailedPosition`).
 - **Grupo B** ✅ hecho (esta sección) — límite diario ("stamina") de partidos
   vs IA.
-- **Grupo C** ⏳ pendiente — torneos ida y vuelta al crearlos, con la localía
-  pesando (+3 Ataque/Medio al local, -1 Ataque al visitante — confirmado con
-  el usuario).
+- **Grupo C** ✅ hecho (esta sección) — torneos ida y vuelta al crearlos, con
+  la localía pesando (+3 Ataque/Medio al local, -1 Ataque al visitante —
+  confirmado con el usuario).
 - **Grupo D** ⏳ pendiente — toca las fórmulas centrales, necesita re-correr
   el script de balance (§33) después:
   - **D1**: penalización por jugar fuera de posición natural (-15% categoría
@@ -821,3 +821,69 @@ recarga real la hace el servidor la próxima vez que se llama
    botones de dificultad se deshabilitan y aparece la hora de recarga.
 5. Confirmar que jugar torneo/amistoso NO consume ni se ve afectado por este
    contador.
+
+### Grupo C — hecho (esta sesión)
+**Torneos ida y vuelta (§40.1) con localía.** Al crear un torneo, un checkbox
+nuevo ("Ida y vuelta — con localía") define `dobleVuelta` en el documento del
+torneo (default `false`, se mantiene el comportamiento de siempre). Con
+`dobleVuelta: true`, el fixture duplica cada fecha de ida invirtiendo local y
+visitante (torneo de 8: 7 fechas de ida + 7 de vuelta), y cada partido de
+torneo le suma al local +3 Ataque/+3 Medio y le resta al visitante -1 Ataque
+— confirmado con el usuario. En torneos a una vuelta, amistosos y vs IA la
+localía NO se aplica.
+
+- `js/config/motor.js` (+ copia `functions/juego/config/motor.js`, verificadas
+  idénticas con `diff`): nueva constante `MOTOR.LOCALIA = { local: {ataque:3,
+  medio:3}, visitante: {ataque:-1} }`.
+- `js/core/motor.js` (+ copia `functions/juego/core/motor.js`, idénticas):
+  `fuerzaEfectiva(equipo, equipoRival, extra=null)` suma `extra` DESPUÉS de
+  todos los multiplicadores de mentalidad/formación (empujón fijo, no un
+  factor que se agranda con el resto). `simularPartido(equipoA, equipoB,
+  semilla, opciones=null)` pasa `opciones?.extraA`/`opciones?.extraB` a cada
+  lado. Ambos parámetros son opcionales y no rompen ningún llamador existente
+  (vs IA, amistosos, torneos a una vuelta siguen sin pasar nada = sin cambios).
+- `functions/index.js`:
+  - `crearTorneo` acepta `idaYVuelta` del cliente y guarda `dobleVuelta` en el
+    doc del torneo.
+  - `generarFixture(participantes, dobleVuelta=false)` reescrito: arma el
+    fixture de ida como siempre y, si `dobleVuelta`, agrega una "vuelta"
+    espejada (mismos enfrentamientos, local/visitante invertidos) a
+    continuación de las fechas de ida.
+  - `iniciarTorneo` pasa `torneo.dobleVuelta === true` a `generarFixture`.
+  - `avanzarFecha`: al simular un partido, arma `opciones` con
+    `MOTOR.LOCALIA.local`/`.visitante` SOLO si `torneo.dobleVuelta`, y se lo
+    pasa a `simularPartido` (acá se decide el resultado real).
+- `js/core/nube.js`: `crearTorneoNube(nombre, idaYVuelta=false)` manda el
+  flag al servidor.
+- `js/ui/torneos.js`:
+  - Checkbox nuevo en la card de "Crear un torneo" (`#torneoIdaYVuelta`).
+  - `construirRegistroRelato`: arma el mismo `opciones` que el servidor
+    (a partir de `t.dobleVuelta`) antes de re-simular con
+    `simularPartido` para el relato — si no, el marcador re-simulado no le
+    coincidiría al ya guardado.
+  - Badge "· Ida y vuelta" en el eyebrow de la sala (`pintarSala`) y de la
+    competencia (`pintarCompeticion`).
+- `css/estilos.css`: `.torneo-check` (fila del checkbox — no se pisa con el
+  estilo `width:100%` que ya tenían los `input` de `.torneo-card`).
+- `docs/Futbol_Figuritas_Proyecto_v3.md`: nueva §40.1 documentando el formato
+  y la localía.
+
+**Decisión técnica a recordar:** `simularPartido` corre en DOS lugares con la
+misma semilla (servidor real y cliente para el relato) y tienen que dar
+idéntico. Por eso el bono de localía viaja como parámetro opcional gateado
+por `torneo.dobleVuelta` en ambos call sites, usando la misma constante
+`MOTOR.LOCALIA` — nunca hardcodeado en un solo lado.
+
+### Cómo testear Grupo C
+1. `firebase deploy` (Cloud Functions modificadas: `crearTorneo`,
+   `iniciarTorneo`, `avanzarFecha`).
+2. Crear un torneo nuevo tildando "Ida y vuelta" → confirmar que el fixture
+   tiene el doble de fechas de un torneo del mismo tamaño sin tildar (8
+   participantes: 14 fechas en vez de 7).
+3. Jugar una fecha de ida y la fecha "espejo" (misma pareja, local/visitante
+   invertido) y confirmar que el mismo equipo de local en cada partido tiene
+   una ligerísima ventaja (no determinante — puede perder igual).
+4. Confirmar que un torneo SIN tildar sigue jugando exactamente igual que
+   antes (sin bono de localía).
+5. Ver la sala y la pantalla de competencia del torneo → debe aparecer
+   "· Ida y vuelta" en el encabezado.

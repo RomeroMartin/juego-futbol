@@ -50,5 +50,16 @@ export const MOTOR = {
     // que §24 anticipa cuando dice que la posesión varía partido a partido.
     // 0 = posesión pura por fuerza (comportamiento Etapa 2). CALIBRADO a 1.0
     // (empates parejos ~18-20%, sin inflar la cola de 5+).
-    TEMPO_POSESION: 0.9
+    TEMPO_POSESION: 0.9,
+
+    // Ventaja de localía (post-Etapa 10, mejora pedida por el grupo). Bono FIJO
+    // que se suma a la Fuerza Efectiva SOLO en partidos de torneo con formato
+    // ida y vuelta (§40) — nunca en vs IA, amistosos, ni torneos a una vuelta.
+    // Mucho más chico que el swing de mentalidad (±12) o el mod de formación
+    // (hasta ±9): es un empujoncito, no un factor decisivo. Confirmado con el
+    // usuario: +3 Ataque y Medio al local, -1 Ataque al visitante.
+    LOCALIA: {
+        local:     { ataque: 3, medio: 3 },
+        visitante: { ataque: -1 }
+    }
 };
