@@ -434,6 +434,46 @@ export function registrarResultadoEconomia(usuario, tipo, resultado, hoy = fecha
 
 
 // ==========================================
+// LÍMITE DE PARTIDOS VS IA (§limiteIA, post-Etapa 10)
+// ==========================================
+//
+// Carga tipo stamina: se empieza con `maxPartidos`, cada partido vs IA
+// descuenta 1, y al llegar a 0 arranca un cooldown de `cooldownHoras`. Pasado
+// el cooldown, se recarga ENTERA (no de a poco). Solo aplica a vs IA — los
+// torneos y amistosos no tienen este límite.
+
+// Si ya pasó el cooldown, recarga la stamina entera. Muta `usuario`. Se llama
+// tanto al consumir (servidor) como al leer el saldo (cliente, para mostrar
+// el número correcto sin esperar un viaje al servidor).
+export function refrescarStaminaIA(usuario, ahora = Date.now()) {
+    if (usuario.partidosIADisponibles === undefined) {
+        usuario.partidosIADisponibles = ECONOMIA.limiteIA.maxPartidos;
+    }
+    if (usuario.iaSeRenuevaEn && ahora >= new Date(usuario.iaSeRenuevaEn).getTime()) {
+        usuario.partidosIADisponibles = ECONOMIA.limiteIA.maxPartidos;
+        usuario.iaSeRenuevaEn = null;
+    }
+}
+
+// Descuenta 1 partido vs IA de la stamina. Devuelve { ok:false, seRenuevaEn }
+// si no queda nada (no muta en ese caso); si hay stock, descuenta y devuelve
+// { ok:true, disponibles }. Arranca el cooldown apenas llega a 0.
+export function consumirStaminaIA(usuario, ahora = Date.now()) {
+    refrescarStaminaIA(usuario, ahora);
+
+    if (usuario.partidosIADisponibles <= 0) {
+        return { ok: false, seRenuevaEn: usuario.iaSeRenuevaEn };
+    }
+
+    usuario.partidosIADisponibles--;
+    if (usuario.partidosIADisponibles === 0) {
+        usuario.iaSeRenuevaEn = new Date(ahora + ECONOMIA.limiteIA.cooldownHoras * 3600000).toISOString();
+    }
+    return { ok: true, disponibles: usuario.partidosIADisponibles };
+}
+
+
+// ==========================================
 // TIENDA (§15.5)
 // ==========================================
 //
@@ -497,7 +537,13 @@ export function usuarioNuevo() {
         paquetesBienvenidaReclamados: false,   // ¿ya se acreditaron los 5 BASICO?
         primerPaqueteEspecialPendiente: true,  // ¿el próximo abre la composición garantizada?
 
-        ultimoPartidoDelDia: null
+        ultimoPartidoDelDia: null,
+
+        // Límite de partidos vs IA (§limiteIA, post-Etapa 10): carga tipo
+        // stamina. Al llegar a 0, hay que esperar `cooldownHoras` para que se
+        // recargue entera (ver refrescarStaminaIA/consumirStaminaIA).
+        partidosIADisponibles: ECONOMIA.limiteIA.maxPartidos,
+        iaSeRenuevaEn: null
     };
 }
 

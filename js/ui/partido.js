@@ -5,11 +5,13 @@
 import { estado, agregarAlHistorial, cargarHistorial } from "../core/estado.js";
 import { guardarPartida, registrarPartidoNube } from "../core/nube.js";
 import { calcularValoracion } from "../core/formulas.js";
+import { refrescarStaminaIA } from "../core/economia.js";
 import { OFFSET_DIFICULTAD } from "../core/rivalIA.js";
 import { prepararPartido, resolverPartido } from "../core/partido.js";
 import { generarRelato } from "../core/relato.js";
 import { slotsDeFormacion } from "../config/formaciones.js";
 import { MENTALIDADES_OF, MENTALIDADES_DEF, MATRIZ_CONTRAS } from "../config/mentalidades.js";
+import { ECONOMIA } from "../config/economia.js";
 import { showScreen, updateHeader } from "./navegacion.js";
 
 
@@ -77,21 +79,50 @@ export function construirEquipoUsuario() {
 // PANTALLA: ELEGIR DIFICULTAD
 // ==========================================
 
+// Stamina de partidos vs IA (§limiteIA, post-Etapa 10): copia liviana que NO
+// persiste nada, solo refleja si ya pasó el cooldown para mostrar el número
+// correcto sin esperar un viaje al servidor (mismo cálculo que el servidor,
+// core/economia.js).
+function staminaIAActual() {
+    const copia = {
+        partidosIADisponibles: estado.usuario.partidosIADisponibles,
+        iaSeRenuevaEn: estado.usuario.iaSeRenuevaEn
+    };
+    refrescarStaminaIA(copia);
+    return copia;
+}
+
+function formatearHora(iso) {
+    if (!iso) return "en un rato";
+    return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 export function renderCompetir() {
     const equipo = construirEquipoUsuario();
     const invalido = document.getElementById("competeInvalido");
     const grid = document.getElementById("dificultadContenido");
+    const staminaEl = document.getElementById("staminaIA");
 
     invalido.hidden = equipo !== null;
+
+    const stamina = staminaIAActual();
+    const sinStamina = stamina.partidosIADisponibles <= 0;
+    if (staminaEl) {
+        staminaEl.innerHTML = sinStamina
+            ? `⏳ Sin partidos vs IA por ahora. Se renuevan a las <strong>${formatearHora(stamina.iaSeRenuevaEn)}</strong>.`
+            : `⚡ <strong>${stamina.partidosIADisponibles}/${ECONOMIA.limiteIA.maxPartidos}</strong> partidos vs IA disponibles hoy.`;
+    }
+
+    const puedeJugar = equipo !== null && !sinStamina;
 
     grid.innerHTML = ORDEN_DIF.map(dif => {
         const info = DIF_INFO[dif];
         const off = OFFSET_DIFICULTAD[dif];
         return `
             <button
-                class="dificultad-card ${equipo ? "" : "disabled"}"
+                class="dificultad-card ${puedeJugar ? "" : "disabled"}"
                 data-dificultad="${dif}"
-                ${equipo ? "" : "disabled"}
+                ${puedeJugar ? "" : "disabled"}
             >
                 <span class="dificultad-nombre">${info.etiqueta}</span>
                 <span class="dificultad-offset">${signo(off)}${off} Fuerza Efectiva</span>

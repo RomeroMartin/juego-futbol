@@ -482,6 +482,15 @@ La IA cumple tres funciones, ninguna de progresión:
 
 **Consecuencia asumida:** el usuario que solo juega contra la IA progresa mucho más lento que el que juega torneos. Eso es intencional, no un efecto colateral.
 
+> 🛠️ **Límite de partidos vs IA (post-Etapa 10, mejora pedida por el grupo).**
+> "Ilimitado" se prestaba a sesiones maratónicas. Se agregó una carga tipo
+> stamina (`config/economia.js → limiteIA`): **20 partidos**, y al llegar a 0
+> hay que esperar **5 horas** para que se recargue **entera** (no es una barra
+> que sube de a poco). Se controla en el servidor (`registrarPartidoIA`
+> rechaza el partido si no queda stamina) y el cliente muestra el contador y
+> la hora de recarga en la pantalla de Competir. No afecta torneos ni
+> amistosos, que no tienen (ni necesitan) este límite.
+
 ### 15.3.2. Tope de amistosos que suman puntos
 
 > ⚠️ **Agujero derivado.** Al quitarle valor a la IA, el único vector de farmeo que queda son los **amistosos entre usuarios**. Dos amigos cómplices pueden desafiarse 50 veces seguidas y repartirse los packs, porque a diferencia de los torneos, los amistosos **no tienen límite estructural**.
